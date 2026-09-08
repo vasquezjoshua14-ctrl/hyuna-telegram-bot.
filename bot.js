@@ -209,8 +209,8 @@ bot.action('payment_guide', async (ctx) => {
   await ctx.answerCbQuery()
   await ctx.reply(
     '💳 *PAYMENT GUIDE* 🌸\n\n' +
-    '1. Choose a product and create an order.\n' +
-    '2. Pay using the payment details provided by the admin/store.\n' +
+    `📱 GCash Name: ${GCASH_NAME}\n` +
+`💰 GCash Number: ${GCASH_NUMBER}\n\n` +
     '3. Once payment is confirmed, your order status will update automatically.\n' +
     '4. Manual products will be prepared and delivered here.\n\n' +
     '💗 Keep your Order ID for reference.',
