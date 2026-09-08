@@ -8,7 +8,8 @@ const BOT_TOKEN = process.env.BOT_TOKEN
 const ADMIN_ID = Number(process.env.ADMIN_ID || 0)
 const CHANNEL_URL = process.env.CHANNEL_URL || 'https://t.me/YOUR_CHANNEL'
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'YOUR_ADMIN_USERNAME'
-
+const GCASH_NAME = process.env.GCASH_NAME || 'GCash Account'
+const GCASH_NUMBER = process.env.GCASH_NUMBER || '09XXXXXXXXX'
 if (!BOT_TOKEN) throw new Error('Missing BOT_TOKEN in .env')
 if (!ADMIN_ID) console.warn('⚠️ ADMIN_ID is not set. Admin commands will not work.')
 
