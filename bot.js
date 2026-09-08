@@ -216,14 +216,7 @@ bot.action('payment_guide', async (ctx) => {
   '💗 Keep your Order ID for reference.',
   {
     parse_mode: 'Markdown',
-    ...Markup.inlineKeyboard([
-      [
-        Markup.button.callback('📋 Copy GCash Number', 'copy_gcash')
-      ]
-    ])
-  }
-)
-}
+    }
 )
 
 bot.action('my_orders', async (ctx) => {
