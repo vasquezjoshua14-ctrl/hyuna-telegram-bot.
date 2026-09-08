@@ -700,7 +700,11 @@ bot.command('orders', async (ctx) => {
 bot.catch((err) => {
   console.error('Bot error:', err)
 })
-
+bot.telegram.setMyCommands([
+  { command: 'start', description: '🏠 Open Menu' },
+  { command: 'menu', description: '🛍 Show Products Menu' },
+  { command: 'orders', description: '📦 My Orders' }
+])
 bot.launch()
 console.log('🌸 Hyuna Store bot is running...')
 
