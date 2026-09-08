@@ -738,6 +738,8 @@ bot.on('text', async (ctx, next) => {
   const db = loadDB()
   db.stock = db.stock || []
 
+  let addedCount = 0
+
   // Parse input based on delivery type
   if (product.deliveryType === 'link') {
     // Accept links - multiple per message or one per line
@@ -752,9 +754,10 @@ bot.on('text', async (ctx, next) => {
           addedAt: new Date().toISOString()
         })
         flow.items.push(link)
+        addedCount++
       }
     }
-    if (flow.items.length === 0) {
+    if (addedCount === 0) {
       return ctx.reply('❌ No valid links found. Please send links starting with http:// or https://')
     }
   } else if (product.deliveryType === 'email_password') {
@@ -771,9 +774,10 @@ bot.on('text', async (ctx, next) => {
           addedAt: new Date().toISOString()
         })
         flow.items.push(`${email}|${password}`)
+        addedCount++
       }
     }
-    if (flow.items.length === 0) {
+    if (addedCount === 0) {
       return ctx.reply('❌ Invalid format. Use: email@example.com|password')
     }
   } else {
@@ -785,6 +789,7 @@ bot.on('text', async (ctx, next) => {
       addedAt: new Date().toISOString()
     })
     flow.items.push(text)
+    addedCount = 1
   }
 
   saveDB(db)
@@ -792,7 +797,7 @@ bot.on('text', async (ctx, next) => {
   // Confirm save
   const totalForPid = db.stock.filter(s => s.productId === productId).length
   await ctx.reply(
-    `✅ Added ${flow.items.length} stock for *${product.name}*\n\nTotal ${productId} stock: ${totalForPid}`,
+    `✅ Added ${addedCount} ${product.name} stock\n\nTotal ${productId} stock: ${totalForPid}`,
     { parse_mode: 'Markdown' }
   )
 
