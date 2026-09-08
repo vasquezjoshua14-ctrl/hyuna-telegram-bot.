@@ -304,7 +304,7 @@ bot.on('text', async (ctx, next) => {
     productName: product.name,
     quantity: q,
     pricePerItem: product.price,
-    totalPrice: product.price * q, // dynamic
+    totalPrice: product.price * q, // dynamic total price
     status: 'waiting_payment',
     createdAt: new Date().toISOString(),
     gmail: null,
@@ -342,6 +342,7 @@ bot.on('text', async (ctx, next) => {
   }
 })
 
+// UNIFIED GMAIL handler (removed duplicate)
 bot.hears(/^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i, async (ctx) => {
   const [, id, gmail] = ctx.match
   const db = loadDB()
@@ -432,7 +433,7 @@ async function confirmPayment(order) {
     saveDB(db)
     await bot.telegram.sendMessage(
       live.userId,
-      `💗 *PAYMENT CONFIRMED!*\n\n` +
+      `��� *PAYMENT CONFIRMED!*\n\n` +
       `🧁 ${product.name} — \`${live.id}\`\n\n` +
       `📧 Please send the Gmail address you want us to invite.\n` +
       `Send it in this format:\n\n` +
@@ -530,32 +531,6 @@ async function deliverCredentials(order, items) {
     }
   )
 }
-
-bot.hears(/^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i, async (ctx) => {
-  const [, id, gmail] = ctx.match
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
-
-  if (!order) return ctx.reply('Order not found.')
-  if (order.productId !== 'canva') return ctx.reply('This order does not require a Gmail address.')
-  if (order.status !== 'waiting_gmail') return ctx.reply('This order is not waiting for Gmail.')
-
-  order.gmail = gmail
-  order.status = 'preparing'
-  saveDB(db)
-
-  await ctx.reply(
-    `📧 Gmail received! 💗\n\nOrder: \`${id}\`\nGmail: \`${gmail}\`\n\n🌸 Your Canva invite is now being prepared.`,
-    { parse_mode: 'Markdown' }
-  )
-
-  if (ADMIN_ID) {
-    await bot.telegram.sendMessage(
-      ADMIN_ID,
-      `🧁 Canva Gmail received\nOrder: ${id}\nGmail: ${gmail}`
-    ).catch(() => {})
-  }
-})
 
 // ADMIN: confirm payment
 bot.command('paid', async (ctx) => {
@@ -684,17 +659,50 @@ bot.command('stockadd', async (ctx) => {
   await ctx.reply(`✅ Added 1 ${productId} stock. Total: ${totalForPid}`)
 })
 
+// ADMIN: view recent orders with detailed summary
 bot.command('orders', async (ctx) => {
   if (!isAdmin(ctx)) return
   const db = loadDB()
   const recent = db.orders.slice(-20).reverse()
   if (!recent.length) return ctx.reply('No orders yet.')
 
-  const text = recent.map(o =>
-    `${o.id} | ${o.productName} | qty:${o.quantity || 1} | total:₱${o.totalPrice || (o.pricePerItem || 0)} | ${o.status} | ${o.userId}`
-  ).join('\n')
+  const text = recent.map(o => {
+    const statusEmoji = {
+      'waiting_payment': '⏳',
+      'paid': '💗',
+      'preparing': '🌸',
+      'waiting_gmail': '📧',
+      'delivered': '✅',
+      'cancelled': '❌',
+      'rejected': '🚫'
+    }
+    return `${statusEmoji[o.status] || '•'} ${o.id} | ${o.productName} | qty:${o.quantity || 1} | ₱${o.totalPrice || (o.pricePerItem || 0)} | ${o.status} | ${o.userId}`
+  }).join('\n')
 
-  await ctx.reply(`📦 Recent Orders\n\n${text}`)
+  await ctx.reply(`📦 *Recent Orders (Last 20)*\n\n${text}`, { parse_mode: 'Markdown' })
+})
+
+// ADMIN: view stock levels
+bot.command('stock', async (ctx) => {
+  if (!isAdmin(ctx)) return
+  const db = loadDB()
+  if (!db.stock || !db.stock.length) return ctx.reply('No stock available.')
+
+  const stockByProduct = {}
+  for (const s of db.stock) {
+    if (!stockByProduct[s.productId]) {
+      stockByProduct[s.productId] = []
+    }
+    stockByProduct[s.productId].push(s)
+  }
+
+  let text = '📦 *STOCK LEVELS*\n\n'
+  for (const [pid, items] of Object.entries(stockByProduct)) {
+    const product = PRODUCTS[pid]
+    text += `${product?.emoji || '•'} *${product?.name || pid}*: ${items.length} item(s)\n`
+  }
+
+  await ctx.reply(text, { parse_mode: 'Markdown' })
 })
 
 bot.catch((err) => {
@@ -702,8 +710,7 @@ bot.catch((err) => {
 })
 bot.telegram.setMyCommands([
   { command: 'start', description: '🏠 Open Menu' },
-  { command: 'menu', description: '🛍 Show Products Menu' },
-  { command: 'orders', description: '📦 My Orders' }
+  { command: 'menu', description: '🛍 Show Products Menu' }
 ])
 bot.launch()
 console.log('🌸 Hyuna Store bot is running...')
