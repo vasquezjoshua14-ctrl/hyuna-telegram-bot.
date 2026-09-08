@@ -58,6 +58,9 @@ const PRODUCTS = {
 // temporary in-memory pending orders while waiting for quantity confirmation
 const pendingOrders = {}
 
+// temporary storage for admin stock adding flow
+const adminStockFlow = {}
+
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     const fresh = { orders: [], stock: [] } // stock is a unified array of stock items
@@ -114,7 +117,13 @@ function orderId() {
 }
 
 function isAdmin(ctx) {
-  return Number(ctx.from?.id) === ADMIN_ID
+  const userId = Number(ctx.from?.id)
+  const isAllowed = userId === ADMIN_ID
+  // Debug: log admin check
+  if (process.env.DEBUG_ADMIN) {
+    console.log(`[ADMIN CHECK] User: ${userId}, ADMIN_ID: ${ADMIN_ID}, Allowed: ${isAllowed}`)
+  }
+  return isAllowed
 }
 
 function menuKeyboard() {
@@ -433,7 +442,7 @@ async function confirmPayment(order) {
     saveDB(db)
     await bot.telegram.sendMessage(
       live.userId,
-      `��� *PAYMENT CONFIRMED!*\n\n` +
+      `💗 *PAYMENT CONFIRMED!*\n\n` +
       `🧁 ${product.name} — \`${live.id}\`\n\n` +
       `📧 Please send the Gmail address you want us to invite.\n` +
       `Send it in this format:\n\n` +
@@ -534,7 +543,7 @@ async function deliverCredentials(order, items) {
 
 // ADMIN: confirm payment
 bot.command('paid', async (ctx) => {
-  if (!isAdmin(ctx)) return
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
   const id = ctx.message.text.split(/\s+/)[1]
   if (!id) return ctx.reply('Usage: /paid HYU-XXXX')
 
@@ -555,7 +564,7 @@ bot.command('paid', async (ctx) => {
 // Usage:
 // /deliver HYU-XXXX email@example.com password123
 bot.command('deliver', async (ctx) => {
-  if (!isAdmin(ctx)) return
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
   const parts = ctx.message.text.split(/\s+/)
   const [, id, email, ...passParts] = parts
   const password = passParts.join(' ')
@@ -585,7 +594,7 @@ bot.command('deliver', async (ctx) => {
 
 // ADMIN: mark Canva invite delivered
 bot.command('canva_done', async (ctx) => {
-  if (!isAdmin(ctx)) return
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
   const id = ctx.message.text.split(/\s+/)[1]
   if (!id) return ctx.reply('Usage: /canva_done HYU-XXXX')
 
@@ -610,58 +619,9 @@ bot.command('canva_done', async (ctx) => {
   await ctx.reply(`✅ Canva marked delivered: ${id}`)
 })
 
-// ADMIN: add stock for Gemini/CapCut
-// /stockadd gemini email@example.com password123
-bot.command('stockadd', async (ctx) => {
-  if (!isAdmin(ctx)) return
-  const parts = ctx.message.text.split(/\s+/)
-  const [, productId, firstParam, ...rest] = parts
-  if (!productId || !firstParam) {
-    return ctx.reply('Usage: /stockadd <productId> <email|link> [password if email_password]')
-  }
-
-  const product = PRODUCTS[productId]
-  if (!product) return ctx.reply('Unknown productId.')
-
-  const db = loadDB()
-  db.stock = db.stock || []
-
-  if (product.deliveryType === 'email_password') {
-    const password = rest.join(' ')
-    if (!password) return ctx.reply('Usage for email_password: /stockadd productId email password')
-    db.stock.push({
-      productId,
-      type: 'email_password',
-      email: firstParam,
-      password,
-      addedAt: new Date().toISOString()
-    })
-  } else if (product.deliveryType === 'link') {
-    // for link-based products, firstParam is the link
-    db.stock.push({
-      productId,
-      type: 'link',
-      link: firstParam,
-      addedAt: new Date().toISOString()
-    })
-  } else {
-    // generic: store as raw item
-    db.stock.push({
-      productId,
-      type: 'generic',
-      value: [firstParam, ...rest].join(' '),
-      addedAt: new Date().toISOString()
-    })
-  }
-
-  saveDB(db)
-  const totalForPid = db.stock.filter(s => s.productId === productId).length
-  await ctx.reply(`✅ Added 1 ${productId} stock. Total: ${totalForPid}`)
-})
-
 // ADMIN: view recent orders with detailed summary
 bot.command('orders', async (ctx) => {
-  if (!isAdmin(ctx)) return
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
   const db = loadDB()
   const recent = db.orders.slice(-20).reverse()
   if (!recent.length) return ctx.reply('No orders yet.')
@@ -684,7 +644,7 @@ bot.command('orders', async (ctx) => {
 
 // ADMIN: view stock levels
 bot.command('stock', async (ctx) => {
-  if (!isAdmin(ctx)) return
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
   const db = loadDB()
   if (!db.stock || !db.stock.length) return ctx.reply('No stock available.')
 
@@ -705,6 +665,141 @@ bot.command('stock', async (ctx) => {
   await ctx.reply(text, { parse_mode: 'Markdown' })
 })
 
+// ADMIN: add stock with button menu flow
+bot.command('addstock', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
+
+  await ctx.reply('📦 *Select a product to add stock:*', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('🌷 Gemini', 'addstock:gemini')],
+      [Markup.button.callback('🎀 CapCut', 'addstock:capcut')],
+      [Markup.button.callback('💕 ChatGPT', 'addstock:chatgpt')],
+      [Markup.button.callback('🧁 Canva', 'addstock:canva')]
+    ])
+  })
+})
+
+// Handle product selection for adding stock
+bot.action(/^addstock:(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('❌ Unauthorized', true)
+  
+  await ctx.answerCbQuery()
+  const productId = ctx.match[1]
+  const product = PRODUCTS[productId]
+  
+  if (!product) return ctx.reply('Product not found.')
+
+  // Initialize admin stock flow
+  adminStockFlow[ctx.from.id] = {
+    productId,
+    deliveryType: product.deliveryType,
+    items: []
+  }
+
+  if (product.deliveryType === 'link') {
+    await ctx.reply(
+      `🌷 *Adding stock for ${product.name}*\n\n` +
+      `Send stock links. You can send multiple links (one per line or each in a separate message).`,
+      { parse_mode: 'Markdown' }
+    )
+  } else if (product.deliveryType === 'email_password') {
+    await ctx.reply(
+      `🎀 *Adding stock for ${product.name}*\n\n` +
+      `Send accounts in format: \`email|password\`\n\n` +
+      `You can send multiple accounts (one per line or each in a separate message).`,
+      { parse_mode: 'Markdown' }
+    )
+  } else {
+    await ctx.reply(
+      `📦 *Adding stock for ${product.name}*\n\n` +
+      `Send the required stock information for this product.`,
+      { parse_mode: 'Markdown' }
+    )
+  }
+})
+
+// Handle admin stock submission
+bot.on('text', async (ctx, next) => {
+  const flow = adminStockFlow[ctx.from.id]
+  if (!flow || !isAdmin(ctx)) return next()
+
+  const text = (ctx.message.text || '').trim()
+  if (!text) return next()
+
+  // Check if this is a command (skip admin stock flow if it's a command)
+  if (text.startsWith('/')) {
+    delete adminStockFlow[ctx.from.id]
+    return next()
+  }
+
+  const productId = flow.productId
+  const product = PRODUCTS[productId]
+  const db = loadDB()
+  db.stock = db.stock || []
+
+  // Parse input based on delivery type
+  if (product.deliveryType === 'link') {
+    // Accept links - multiple per message or one per line
+    const lines = text.split('\n').filter(l => l.trim())
+    for (const line of lines) {
+      const link = line.trim()
+      if (link && (link.startsWith('http://') || link.startsWith('https://'))) {
+        db.stock.push({
+          productId,
+          type: 'link',
+          link,
+          addedAt: new Date().toISOString()
+        })
+        flow.items.push(link)
+      }
+    }
+    if (flow.items.length === 0) {
+      return ctx.reply('❌ No valid links found. Please send links starting with http:// or https://')
+    }
+  } else if (product.deliveryType === 'email_password') {
+    // Accept email|password format
+    const lines = text.split('\n').filter(l => l.trim())
+    for (const line of lines) {
+      const [email, password] = line.split('|').map(s => s.trim())
+      if (email && password && email.includes('@')) {
+        db.stock.push({
+          productId,
+          type: 'email_password',
+          email,
+          password,
+          addedAt: new Date().toISOString()
+        })
+        flow.items.push(`${email}|${password}`)
+      }
+    }
+    if (flow.items.length === 0) {
+      return ctx.reply('❌ Invalid format. Use: email@example.com|password')
+    }
+  } else {
+    // For manual products, just store as is
+    db.stock.push({
+      productId,
+      type: 'generic',
+      value: text,
+      addedAt: new Date().toISOString()
+    })
+    flow.items.push(text)
+  }
+
+  saveDB(db)
+
+  // Confirm save
+  const totalForPid = db.stock.filter(s => s.productId === productId).length
+  await ctx.reply(
+    `✅ Added ${flow.items.length} stock for *${product.name}*\n\nTotal ${productId} stock: ${totalForPid}`,
+    { parse_mode: 'Markdown' }
+  )
+
+  // Clear flow
+  delete adminStockFlow[ctx.from.id]
+})
+
 bot.catch((err) => {
   console.error('Bot error:', err)
 })
@@ -714,6 +809,7 @@ bot.telegram.setMyCommands([
 ])
 bot.launch()
 console.log('🌸 Hyuna Store bot is running...')
+console.log(`ADMIN_ID configured: ${ADMIN_ID}`)
 
 process.once('SIGINT', () => bot.stop('SIGINT'))
 process.once('SIGTERM', () => bot.stop('SIGTERM'))
