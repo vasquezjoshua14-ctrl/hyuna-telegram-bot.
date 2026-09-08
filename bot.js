@@ -16,7 +16,6 @@ const bot = new Telegraf(BOT_TOKEN)
 
 const DB_FILE = path.join(__dirname, 'db.json')
 const WELCOME_IMAGE = path.join(__dirname, 'hyuna-welcome.png')
-
 const PRODUCTS = {
   gemini: {
     id: 'gemini',
