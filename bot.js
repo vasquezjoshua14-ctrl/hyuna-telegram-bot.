@@ -208,19 +208,21 @@ bot.action(/^cancel:(HYU-.+)$/, async (ctx) => {
 bot.action('payment_guide', async (ctx) => {
   await ctx.answerCbQuery()
   await ctx.reply(
-    '💳 *PAYMENT GUIDE* 🌸\n\n' +
-    `📱 GCash Name: ${GCASH_NAME}\n` +
-'💰 GCash Number:\n' +
-    '3. Once payment is confirmed, your order status will update automatically.\n' +
-    '4. Manual products will be prepared and delivered here.\n\n' +
-    '💗 Keep your Order ID for reference.',
-{
-  parse_mode: 'Markdown',
-  ...Markup.inlineKeyboard([
-    [
-      Markup.button.callback('📋 Copy GCash Number', 'copy_gcash')
-    ]
-  ])
+  '💳 *PAYMENT GUIDE* 🌸\n\n' +
+  `📱 GCash Name: ${GCASH_NAME}\n` +
+  `💰 GCash Number: ${GCASH_NUMBER}\n\n` +
+  '3. Once payment is confirmed, your order status will update automatically.\n' +
+  '4. Manual products will be prepared and delivered here.\n\n' +
+  '💗 Keep your Order ID for reference.',
+  {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [
+        Markup.button.callback('📋 Copy GCash Number', 'copy_gcash')
+      ]
+    ])
+  }
+)
 }
 )
 
