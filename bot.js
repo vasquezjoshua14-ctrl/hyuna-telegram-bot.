@@ -357,9 +357,22 @@ order.receipt = {
       `Product: ${order.productName}\n` +
       `Total: ₱${order.totalPrice}\n` +
       `Buyer: @${order.username || 'no_username'} (${order.userId})`
-    const sendReceipt = media.type === 'document'
-      ? bot.telegram.sendDocument(ADMIN_ID, media.fileId, { caption: adminCaption })
-      : bot.telegram.sendPhoto(ADMIN_ID, media.fileId, { caption: adminCaption })
+    const keyboard = Markup.inlineKeyboard([
+  [
+    Markup.button.callback('✅ Approve', `approve_${id}`),
+    Markup.button.callback('❌ Reject', `reject_${id}`)
+  ]
+])
+
+const sendReceipt = media.type === 'document'
+  ? bot.telegram.sendDocument(ADMIN_ID, media.fileId, {
+      caption: adminCaption,
+      ...keyboard
+    })
+  : bot.telegram.sendPhoto(ADMIN_ID, media.fileId, {
+      caption: adminCaption,
+      ...keyboard
+    })
     await sendReceipt.catch(() => {})
   }
   return true
