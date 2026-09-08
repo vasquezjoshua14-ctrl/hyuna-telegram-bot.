@@ -662,14 +662,14 @@ async function confirmPayment(order) {
       remainingStock.push(s)
     }
   }
-  db.stock = remainingStock
-  live.status = 'delivered'
-  live.deliveredAt = new Date().toISOString()
-  live.deliveredItems = toDeliver
-  saveDB(db)
+  // deliver first
+await deliverCredentials(live, toDeliver)
 
-  // deliver accordingly
-  await deliverCredentials(live, toDeliver)
+// remove stock after successful delivery
+db.stock = remainingStock
+live.status = 'delivered'
+live.deliveredItems = toDeliver
+saveDB(db)
 }
 
 async function deliverCredentials(order, items) {
