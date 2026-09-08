@@ -61,6 +61,9 @@ const pendingOrders = {}
 // temporary storage for admin stock adding flow
 const adminStockFlow = {}
 
+// temporary storage for admin stock deletion flow
+const adminDelStockFlow = {}
+
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     const fresh = { orders: [], stock: [] } // stock is a unified array of stock items
@@ -700,7 +703,10 @@ bot.action(/^addstock:(.+)$/, async (ctx) => {
   if (product.deliveryType === 'link') {
     await ctx.reply(
       `🌷 *Adding stock for ${product.name}*\n\n` +
-      `Send stock links. You can send multiple links (one per line or each in a separate message).`,
+      `Send stock links. You can send multiple links (one per line or each in a separate message).\n\n` +
+      `Formats accepted:\n` +
+      `• Plain links:\n  https://link1.com\n  https://link2.com\n\n` +
+      `• Numbered format:\n  Link 1: https://link1.com\n  Link 2: https://link2.com`,
       { parse_mode: 'Markdown' }
     )
   } else if (product.deliveryType === 'email_password') {
@@ -718,6 +724,30 @@ bot.action(/^addstock:(.+)$/, async (ctx) => {
     )
   }
 })
+
+// Helper function to parse bulk numbered links
+function parseBulkLinks(text) {
+  const lines = text.split('\n').filter(l => l.trim())
+  const links = []
+  
+  for (const line of lines) {
+    const trimmed = line.replace(/[\u200B-\u200D\uFEFF]/g, '').trim() // Remove invisible Unicode
+    
+    // Try to match "Link N: URL" format
+    const match = trimmed.match(/^[Ll]ink\s+\d+:\s*(https?:\/\/.+)$/i)
+    if (match) {
+      const url = match[1].trim()
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        links.push(url)
+      }
+    } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      // Plain link format
+      links.push(trimmed)
+    }
+  }
+  
+  return links
+}
 
 // Handle admin stock submission
 bot.on('text', async (ctx, next) => {
@@ -742,21 +772,20 @@ bot.on('text', async (ctx, next) => {
 
   // Parse input based on delivery type
   if (product.deliveryType === 'link') {
-    // Accept links - multiple per message or one per line
-    const lines = text.split('\n').filter(l => l.trim())
-    for (const line of lines) {
-      const link = line.trim()
-      if (link && (link.startsWith('http://') || link.startsWith('https://'))) {
-        db.stock.push({
-          productId,
-          type: 'link',
-          link,
-          addedAt: new Date().toISOString()
-        })
-        flow.items.push(link)
-        addedCount++
-      }
+    // Parse bulk links (both "Link N: url" and plain url formats)
+    const links = parseBulkLinks(text)
+    
+    for (const link of links) {
+      db.stock.push({
+        productId,
+        type: 'link',
+        link,
+        addedAt: new Date().toISOString()
+      })
+      flow.items.push(link)
+      addedCount++
     }
+    
     if (addedCount === 0) {
       return ctx.reply('❌ No valid links found. Please send links starting with http:// or https://')
     }
@@ -797,12 +826,202 @@ bot.on('text', async (ctx, next) => {
   // Confirm save
   const totalForPid = db.stock.filter(s => s.productId === productId).length
   await ctx.reply(
-    `✅ Added ${addedCount} ${product.name} stock\n\nTotal ${productId} stock: ${totalForPid}`,
+    `✅ Added ${addedCount} ${product.name} stock\n\n📦 Total ${product.name} stock: ${totalForPid}`,
     { parse_mode: 'Markdown' }
   )
 
   // Clear flow
   delete adminStockFlow[ctx.from.id]
+})
+
+// ADMIN: delete stock - product selection
+bot.command('delstock', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
+
+  await ctx.reply('📦 *Select a product to delete stock:*', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('🌷 Gemini', 'delstock:gemini')],
+      [Markup.button.callback('🎀 CapCut', 'delstock:capcut')],
+      [Markup.button.callback('💕 ChatGPT', 'delstock:chatgpt')],
+      [Markup.button.callback('🧁 Canva', 'delstock:canva')]
+    ])
+  })
+})
+
+// Handle product selection for deleting stock
+bot.action(/^delstock:(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('❌ Unauthorized', true)
+  
+  await ctx.answerCbQuery()
+  const productId = ctx.match[1]
+  const product = PRODUCTS[productId]
+  
+  if (!product) return ctx.reply('Product not found.')
+
+  const db = loadDB()
+  const productStocks = db.stock.filter(s => s.productId === productId)
+  
+  if (!productStocks.length) return ctx.reply(`📦 No stock available for ${product.name}.`)
+
+  // Show stocks numbered
+  let text = `📦 *${product.name} Stock (${productStocks.length} items)*\n\n`
+  productStocks.forEach((stock, idx) => {
+    if (stock.type === 'link') {
+      text += `Stock ${idx + 1}\n${stock.link}\n\n`
+    } else if (stock.type === 'email_password') {
+      text += `Stock ${idx + 1}\n📧 ${stock.email}\n🔐 ${stock.password}\n\n`
+    } else {
+      text += `Stock ${idx + 1}\n${JSON.stringify(stock)}\n\n`
+    }
+  })
+  
+  text += `Reply with the stock number to delete (1-${productStocks.length})`
+
+  adminDelStockFlow[ctx.from.id] = {
+    productId,
+    productStocks,
+    product
+  }
+
+  await ctx.reply(text, { parse_mode: 'Markdown' })
+})
+
+// Handle stock deletion by number
+bot.on('text', async (ctx, next) => {
+  const flow = adminDelStockFlow[ctx.from.id]
+  if (!flow || !isAdmin(ctx)) return next()
+
+  const text = (ctx.message.text || '').trim()
+  if (text.startsWith('/')) {
+    delete adminDelStockFlow[ctx.from.id]
+    return next()
+  }
+
+  const num = Number(text)
+  if (!Number.isInteger(num) || num < 1 || num > flow.productStocks.length) {
+    return ctx.reply(`❌ Please enter a number between 1 and ${flow.productStocks.length}.`)
+  }
+
+  const db = loadDB()
+  const stockToDelete = flow.productStocks[num - 1]
+  
+  // Remove from db.stock
+  const stockIndex = db.stock.findIndex(s => 
+    s.productId === flow.productId && 
+    s === stockToDelete
+  )
+  
+  if (stockIndex !== -1) {
+    db.stock.splice(stockIndex, 1)
+    saveDB(db)
+  }
+
+  await ctx.reply(
+    `✅ Deleted stock ${num} from ${flow.product.name}\n\n📦 Remaining ${flow.product.name} stock: ${db.stock.filter(s => s.productId === flow.productId).length}`,
+    { parse_mode: 'Markdown' }
+  )
+
+  delete adminDelStockFlow[ctx.from.id]
+})
+
+// ADMIN: clear all stock for a product - product selection
+bot.command('clearproductstock', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
+
+  await ctx.reply('📦 *Select a product to clear all stock:*', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('🌷 Gemini', 'clearproductstock:gemini')],
+      [Markup.button.callback('🎀 CapCut', 'clearproductstock:capcut')],
+      [Markup.button.callback('💕 ChatGPT', 'clearproductstock:chatgpt')],
+      [Markup.button.callback('🧁 Canva', 'clearproductstock:canva')]
+    ])
+  })
+})
+
+// Handle product selection for clearing stock
+bot.action(/^clearproductstock:(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('❌ Unauthorized', true)
+  
+  await ctx.answerCbQuery()
+  const productId = ctx.match[1]
+  const product = PRODUCTS[productId]
+  
+  if (!product) return ctx.reply('Product not found.')
+
+  const db = loadDB()
+  const count = db.stock.filter(s => s.productId === productId).length
+
+  if (!count) return ctx.reply(`📦 No stock available for ${product.name}.`)
+
+  await ctx.reply(
+    `⚠️ *Confirm deletion*\n\nDelete ALL ${count} stock item(s) of ${product.name}?\n\nReply: YES or NO`,
+    { parse_mode: 'Markdown' }
+  )
+
+  adminDelStockFlow[ctx.from.id] = {
+    action: 'clearproductstock',
+    productId,
+    product
+  }
+})
+
+// ADMIN: clear all stock for all products
+bot.command('clearallstock', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
+
+  const db = loadDB()
+  const totalCount = db.stock.length
+
+  if (!totalCount) return ctx.reply('📦 No stock available.')
+
+  await ctx.reply(
+    `⚠️ *Confirm deletion*\n\nDelete ALL ${totalCount} stock item(s) from ALL products?\n\nReply: YES or NO`,
+    { parse_mode: 'Markdown' }
+  )
+
+  adminDelStockFlow[ctx.from.id] = {
+    action: 'clearallstock'
+  }
+})
+
+// Handle confirmation responses for stock clearing
+bot.hears(/^(yes|no)$/i, async (ctx) => {
+  const flow = adminDelStockFlow[ctx.from.id]
+  if (!flow || !isAdmin(ctx)) return
+
+  const response = ctx.message.text.toLowerCase()
+
+  if (response === 'no') {
+    await ctx.reply('❌ Cancelled.')
+    delete adminDelStockFlow[ctx.from.id]
+    return
+  }
+
+  if (response === 'yes') {
+    const db = loadDB()
+
+    if (flow.action === 'clearproductstock') {
+      const count = db.stock.filter(s => s.productId === flow.productId).length
+      db.stock = db.stock.filter(s => s.productId !== flow.productId)
+      saveDB(db)
+      await ctx.reply(
+        `✅ Deleted ${count} stock item(s) from ${flow.product.name}`,
+        { parse_mode: 'Markdown' }
+      )
+    } else if (flow.action === 'clearallstock') {
+      const count = db.stock.length
+      db.stock = []
+      saveDB(db)
+      await ctx.reply(
+        `✅ Deleted ALL ${count} stock item(s) from all products`,
+        { parse_mode: 'Markdown' }
+      )
+    }
+
+    delete adminDelStockFlow[ctx.from.id]
+  }
 })
 
 bot.catch((err) => {
