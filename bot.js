@@ -1,4 +1,3 @@
-
 const { Telegraf, Markup } = require('telegraf')
 const fs = require('fs')
 const path = require('path')
@@ -25,7 +24,7 @@ const PRODUCTS = {
     price: 100,
     details: ['1K Credits', '18 Months'],
     note: '⚠️ No warranty after claim',
-    delivery: 'stock'
+    deliveryType: 'link' // send link only
   },
   capcut: {
     id: 'capcut',
@@ -34,7 +33,7 @@ const PRODUCTS = {
     price: 150,
     details: ['1 Month'],
     note: '',
-    delivery: 'stock'
+    deliveryType: 'email_password' // send email+password from stock
   },
   chatgpt: {
     id: 'chatgpt',
@@ -43,7 +42,7 @@ const PRODUCTS = {
     price: 450,
     details: ['Shared by 4 persons', '1 device only', 'Stable account'],
     note: '🛡 Full warranty • Manual account delivery up to 12 hours',
-    delivery: 'manual_account'
+    deliveryType: 'manual' // admin will deliver
   },
   canva: {
     id: 'canva',
@@ -52,17 +51,57 @@ const PRODUCTS = {
     price: 30,
     details: ['1 Month+', 'Via invite'],
     note: '📧 Send Gmail after payment • Manual delivery',
-    delivery: 'manual_gmail'
+    deliveryType: 'manual_invite' // ask for gmail and admin will invite
   }
 }
 
+// temporary in-memory pending orders while waiting for quantity confirmation
+const pendingOrders = {}
+
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
-    const fresh = { orders: [], stock: { gemini: [], capcut: [] } }
+    const fresh = { orders: [], stock: [] } // stock is a unified array of stock items
     fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2))
     return fresh
   }
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
+  const raw = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
+
+  // Migration: old format had stock as object keyed by product id.
+  // Convert to unified array: { productId, type, email, password, link, addedAt }
+  if (raw.stock && !Array.isArray(raw.stock)) {
+    const unified = []
+    for (const [pid, items] of Object.entries(raw.stock)) {
+      if (Array.isArray(items)) {
+        for (const it of items) {
+          if (it && typeof it === 'object') {
+            if (it.email && it.password) {
+              unified.push({
+                productId: pid,
+                type: 'email_password',
+                email: it.email,
+                password: it.password,
+                addedAt: it.addedAt || new Date().toISOString()
+              })
+            } else if (it.link) {
+              unified.push({
+                productId: pid,
+                type: 'link',
+                link: it.link,
+                addedAt: it.addedAt || new Date().toISOString()
+              })
+            }
+          }
+        }
+      }
+    }
+    raw.stock = unified
+    fs.writeFileSync(DB_FILE, JSON.stringify(raw, null, 2))
+  }
+
+  // Ensure shape
+  raw.stock = raw.stock || []
+  raw.orders = raw.orders || []
+  return raw
 }
 
 function saveDB(db) {
@@ -151,44 +190,17 @@ bot.action(/^buy:(.+)$/, async (ctx) => {
   const product = PRODUCTS[productId]
   if (!product) return ctx.reply('Product not found.')
 
-  const db = loadDB()
-  const order = {
-    id: orderId(),
-    userId: ctx.from.id,
-    username: ctx.from.username || '',
+  // store pending purchase and ask for quantity
+  pendingOrders[ctx.from.id] = {
     productId,
-    productName: product.name,
-    price: product.price,
-    status: 'waiting_payment',
-    createdAt: new Date().toISOString(),
-    gmail: null,
-    deliveredAt: null
+    createdAt: new Date().toISOString()
   }
-  db.orders.push(order)
-  saveDB(db)
 
-  const msg =
-    `🎀 *ORDER CREATED!*\n\n` +
-    `${product.emoji} Product: *${product.name}*\n` +
-    `💸 Total: *₱${product.price}*\n` +
-    `🧾 Order ID: \`${order.id}\`\n` +
-    `⏰ Status: *Waiting for Payment*\n\n` +
-    `💗 Please complete your payment to continue.`
-
-  await ctx.reply(msg, {
-    parse_mode: 'Markdown',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('💳 Payment Guide', 'payment_guide')],
-      [Markup.button.callback('❌ Cancel Order', `cancel:${order.id}`)]
-    ])
+  await ctx.reply('🛒 Ilan ang order? (1-50)\nHalimbawa: 5', {
+    reply_markup: {
+      force_reply: false
+    }
   })
-
-  if (ADMIN_ID) {
-    await bot.telegram.sendMessage(
-      ADMIN_ID,
-      `🛎 New order\n\nOrder: ${order.id}\nProduct: ${product.name}\nPrice: ₱${product.price}\nBuyer: @${order.username || 'no_username'} (${order.userId})`
-    ).catch(() => {})
-  }
 })
 
 bot.action(/^cancel:(HYU-.+)$/, async (ctx) => {
@@ -207,19 +219,36 @@ bot.action(/^cancel:(HYU-.+)$/, async (ctx) => {
 
 bot.action('payment_guide', async (ctx) => {
   await ctx.answerCbQuery()
-  await ctx.replyWithPhoto(
- { source: './GCash-MyQR-08092026123724.PNG.jpg' },
-  {
-    caption:
-      '💳 *PAYMENT GUIDE* 🌸\n\n' +
-      `📱 GCash Name: ${GCASH_NAME}\n` +
-      `💰 GCash Number: ${GCASH_NUMBER}\n\n` +
-      'Scan the QR code to pay.\n\n' +
-      '💗 Keep your Order ID for reference.',
-    parse_mode: 'Markdown'
+
+  const db = loadDB()
+  // find latest waiting_payment order for this user
+  const order = db.orders.filter(o => o.userId === ctx.from.id && o.status === 'waiting_payment').slice(-1)[0]
+
+  let caption =
+    '💳 *PAYMENT GUIDE* 🌸\n\n' +
+    `📱 GCash Name: ${GCASH_NAME}\n` +
+    `💰 GCash Number: ${GCASH_NUMBER}\n\n` +
+    'Scan the QR code to pay.\n\n' +
+    '💗 Keep your Order ID for reference.\n\n'
+
+  if (order) {
+    caption =
+      `🧾 *PAYMENT SUMMARY*\n\n` +
+      `Product: *${order.productName}*\n` +
+      `Quantity: *${order.quantity}*\n` +
+      `Price: *₱${order.pricePerItem} each*\n` +
+      `Total: *₱${order.totalPrice}*\n\n` +
+      caption
   }
-)
-  })
+
+  await ctx.replyWithPhoto(
+    { source: './GCash-MyQR-08092026123724.PNG.jpg' },
+    {
+      caption,
+      parse_mode: 'Markdown'
+    }
+  )
+})
 
 bot.action('my_orders', async (ctx) => {
   await ctx.answerCbQuery()
@@ -238,97 +267,80 @@ bot.action('my_orders', async (ctx) => {
       cancelled: '❌ Cancelled',
       rejected: '🚫 Rejected'
     }
-    return `🧾 \`${o.id}\`\n${o.productName} — ₱${o.price}\n${statusMap[o.status] || o.status}`
+    const qty = o.quantity || 1
+    const priceEach = o.pricePerItem || o.price || 0
+    const total = o.totalPrice || priceEach * qty
+    return `🧾 \`${o.id}\`\n${o.productName} — ${qty} x ₱${priceEach} = ₱${total}\n${statusMap[o.status] || o.status}`
   })
 
   await ctx.reply(`📦 *MY ORDERS*\n\n${lines.join('\n\n')}`, { parse_mode: 'Markdown' })
 })
 
-async function confirmPayment(order) {
+// Quantity confirmation handler — placed before the GMAIL handler
+bot.on('text', async (ctx, next) => {
+  const pending = pendingOrders[ctx.from.id]
+  if (!pending) return next() // not a quantity reply for a purchase
+
+  const text = (ctx.message.text || '').trim()
+  const q = Number(text)
+  if (!Number.isInteger(q) || q < 1 || q > 50) {
+    return ctx.reply('❌ Invalid quantity. Please enter a number between 1 and 50.')
+  }
+
+  // create the order now
+  const productId = pending.productId
+  const product = PRODUCTS[productId]
+  if (!product) {
+    delete pendingOrders[ctx.from.id]
+    return ctx.reply('Product not found.')
+  }
+
   const db = loadDB()
-  const live = db.orders.find(o => o.id === order.id)
-  if (!live) return
-
-  const product = PRODUCTS[live.productId]
-  if (!product) return
-
-  if (product.delivery === 'manual_account') {
-    live.status = 'preparing'
-    saveDB(db)
-    await bot.telegram.sendMessage(
-      live.userId,
-      `💗 *PAYMENT CONFIRMED!*\n\n` +
-      `💕 Your *${product.name}* order is now being prepared.\n\n` +
-      `🧾 Order: \`${live.id}\`\n` +
-      `💸 Paid: *₱${live.price}*\n` +
-      `📦 Status: *Preparing Account*\n\n` +
-      `⏰ This product is manually delivered.\n` +
-      `Please allow up to *12 hours* for your account details to arrive here.\n\n` +
-      `🌷 No need to place another order while waiting. Thank you! 💕`,
-      { parse_mode: 'Markdown' }
-    )
-    return
+  const order = {
+    id: orderId(),
+    userId: ctx.from.id,
+    username: ctx.from.username || '',
+    productId,
+    productName: product.name,
+    quantity: q,
+    pricePerItem: product.price,
+    totalPrice: product.price * q, // dynamic
+    status: 'waiting_payment',
+    createdAt: new Date().toISOString(),
+    gmail: null,
+    deliveredAt: null,
+    deliveredItems: [] // will hold delivered stock items (unified format)
   }
-
-  if (product.delivery === 'manual_gmail') {
-    live.status = 'waiting_gmail'
-    saveDB(db)
-    await bot.telegram.sendMessage(
-      live.userId,
-      `💗 *PAYMENT CONFIRMED!*\n\n` +
-      `🧁 Canva Pro — \`${live.id}\`\n\n` +
-      `📧 Please send the Gmail address you want us to invite.\n` +
-      `Send it in this format:\n\n` +
-      `\`GMAIL ${live.id} yourname@gmail.com\``,
-      { parse_mode: 'Markdown' }
-    )
-    return
-  }
-
-  const stock = db.stock[product.id] || []
-  const item = stock.shift()
-
-  if (!item) {
-    live.status = 'preparing'
-    saveDB(db)
-    await bot.telegram.sendMessage(
-      live.userId,
-      `💗 Payment confirmed for \`${live.id}\`.\n\n🌸 Your ${product.name} is being prepared. We will deliver it here as soon as stock is ready.`,
-      { parse_mode: 'Markdown' }
-    )
-    return
-  }
-
-  live.status = 'delivered'
-  live.deliveredAt = new Date().toISOString()
-  live.deliveredEmail = item.email
-  live.deliveredPassword = item.password
+  db.orders.push(order)
   saveDB(db)
 
-  await deliverCredentials(live, item.email, item.password)
-}
+  delete pendingOrders[ctx.from.id]
 
-async function deliverCredentials(order, email, password) {
-  await bot.telegram.sendMessage(
-    order.userId,
-    `💕 *YOUR ACCOUNT IS READY!* 💕\n\n` +
-    `🧾 Order: \`${order.id}\`\n` +
-    `📦 Product: *${order.productName}*\n` +
-    `✅ Status: *Delivered*\n\n` +
-    `📧 *EMAIL*\n\`${email}\`\n\n` +
-    `🔐 *PASSWORD*\n\`${password}\`\n\n` +
-    `💗 Please save your login details.\n` +
-    `🌸 Thank you for ordering from Hyuna Store!`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('📧 Show Email', `show_email:${order.id}`)],
-        [Markup.button.callback('🔐 Show Password', `show_pass:${order.id}`)],
-        [Markup.button.callback('✅ Mark as Received', `received:${order.id}`)]
-      ])
-    }
-  )
-}
+  const msg =
+    `🎀 *ORDER CREATED!*\n\n` +
+    `${product.emoji} Product: *${product.name}*\n` +
+    `🔢 Quantity: *${order.quantity}*\n` +
+    `💸 Price: *₱${order.pricePerItem} each*\n` +
+    `💰 Total: *₱${order.totalPrice}*\n` +
+    `🧾 Order ID: \`${order.id}\`\n` +
+    `⏰ Status: *Waiting for Payment*\n\n` +
+    `💗 Please complete your payment to continue.`
+
+  await ctx.reply(msg, {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('💳 Payment Guide', 'payment_guide')],
+      [Markup.button.callback('❌ Cancel Order', `cancel:${order.id}`)]
+    ])
+  })
+
+  if (ADMIN_ID) {
+    await bot.telegram.sendMessage(
+      ADMIN_ID,
+      `🛎 New order\n\nOrder: ${order.id}\nProduct: ${product.name}\nQty: ${order.quantity}\nTotal: ₱${order.totalPrice}\nBuyer: @${order.username || 'no_username'} (${order.userId})`
+    ).catch(() => {})
+  }
+})
 
 bot.hears(/^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i, async (ctx) => {
   const [, id, gmail] = ctx.match
@@ -361,22 +373,188 @@ bot.action(/^received:(HYU-.+)$/, async (ctx) => {
   await ctx.reply('🌸 Thank you for confirming. Enjoy your order! 💕')
 })
 
-bot.action(/^show_email:(HYU-.+)$/, async (ctx) => {
+bot.action(/^show_items:(HYU-.+)$/, async (ctx) => {
   await ctx.answerCbQuery()
   const id = ctx.match[1]
   const db = loadDB()
   const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
-  if (!order || !order.deliveredEmail) return ctx.reply('Email not available.')
-  await ctx.reply(`📧 \`${order.deliveredEmail}\``, { parse_mode: 'Markdown' })
+  if (!order || !order.deliveredItems || !order.deliveredItems.length) return ctx.reply('Items not available.')
+
+  const items = order.deliveredItems
+  let text = `📦 Delivered items for \`${order.id}\`:\n\n`
+  if (items[0].type === 'link') {
+    items.forEach((it, idx) => {
+      text += `#${idx + 1}: ${it.link}\n`
+    })
+  } else if (items[0].type === 'email_password') {
+    items.forEach((it, idx) => {
+      text += `#${idx + 1} • 📧 ${it.email}\n    🔐 ${it.password}\n\n`
+    })
+  } else {
+    items.forEach((it, idx) => {
+      text += `#${idx + 1} • ${JSON.stringify(it)}\n`
+    })
+  }
+
+  await ctx.reply(text, { parse_mode: 'Markdown' })
 })
 
-bot.action(/^show_pass:(HYU-.+)$/, async (ctx) => {
-  await ctx.answerCbQuery()
-  const id = ctx.match[1]
+async function confirmPayment(order) {
+  const db = loadDB()
+  const live = db.orders.find(o => o.id === order.id)
+  if (!live) return
+
+  const product = PRODUCTS[live.productId]
+  if (!product) return
+
+  // Manual (admin will handle)
+  if (product.deliveryType === 'manual') {
+    live.status = 'preparing'
+    saveDB(db)
+    await bot.telegram.sendMessage(
+      live.userId,
+      `💗 *PAYMENT CONFIRMED!*\n\n` +
+      `💕 Your *${product.name}* order is now being prepared.\n\n` +
+      `🧾 Order: \`${live.id}\`\n` +
+      `💸 Paid: *₱${live.totalPrice}*\n` +
+      `📦 Status: *Preparing Account*\n\n` +
+      `⏰ This product is manually delivered.\n` +
+      `Please allow up to *12 hours* for your account details to arrive here.\n\n` +
+      `🌷 No need to place another order while waiting. Thank you! 💕`,
+      { parse_mode: 'Markdown' }
+    )
+    return
+  }
+
+  // Manual invite (Canva)
+  if (product.deliveryType === 'manual_invite') {
+    live.status = 'waiting_gmail'
+    saveDB(db)
+    await bot.telegram.sendMessage(
+      live.userId,
+      `💗 *PAYMENT CONFIRMED!*\n\n` +
+      `🧁 ${product.name} — \`${live.id}\`\n\n` +
+      `📧 Please send the Gmail address you want us to invite.\n` +
+      `Send it in this format:\n\n` +
+      `\`GMAIL ${live.id} yourname@gmail.com\``,
+      { parse_mode: 'Markdown' }
+    )
+    return
+  }
+
+  // For stock-based products (link or email_password)
+  const needed = live.quantity || 1
+  // Find matching stock items for this product
+  const available = db.stock.filter(s => s.productId === live.productId)
+  if (available.length < needed) {
+    live.status = 'preparing'
+    saveDB(db)
+    await bot.telegram.sendMessage(
+      live.userId,
+      `💗 Payment confirmed for \`${live.id}\`.\n\n🌸 Your ${product.name} is being prepared. We will deliver it here as soon as stock is ready.`,
+      { parse_mode: 'Markdown' }
+    )
+    return
+  }
+
+  // Reserve (remove) the first 'needed' matching stock items
+  const toDeliver = []
+  let removed = 0
+  const remainingStock = []
+  for (const s of db.stock) {
+    if (removed < needed && s.productId === live.productId) {
+      toDeliver.push(s)
+      removed++
+    } else {
+      remainingStock.push(s)
+    }
+  }
+  db.stock = remainingStock
+  live.status = 'delivered'
+  live.deliveredAt = new Date().toISOString()
+  live.deliveredItems = toDeliver
+  saveDB(db)
+
+  // deliver accordingly
+  await deliverCredentials(live, toDeliver)
+}
+
+async function deliverCredentials(order, items) {
+  // items: array of unified stock items (can contain link or email/password)
+  if (!Array.isArray(items)) items = [items]
+
+  const product = PRODUCTS[order.productId]
+
+  let body = `💕 *YOUR ${product.name.toUpperCase()} ORDER IS READY!* 💕\n\n` +
+    `🧾 Order: \`${order.id}\`\n` +
+    `📦 Product: *${product.name}*\n` +
+    `✅ Status: *Delivered*\n\n`
+
+  if (items.length === 0) {
+    body += '✅ Delivery completed.\n'
+  } else {
+    if (items[0].type === 'link') {
+      body += '*LINKS*\n'
+      items.forEach((it, idx) => {
+        body += `#${idx + 1}: ${it.link}\n`
+      })
+      body += '\n'
+    } else if (items[0].type === 'email_password') {
+      body += '*ACCOUNTS*\n'
+      items.forEach((it, idx) => {
+        body += `#${idx + 1} • 📧 ${it.email}\n    🔐 ${it.password}\n`
+      })
+      body += '\n'
+    } else {
+      // generic print
+      items.forEach((it, idx) => {
+        body += `#${idx + 1}: ${JSON.stringify(it)}\n`
+      })
+      body += '\n'
+    }
+  }
+
+  body += `💗 Please save your login details.\n` +
+    `🌸 Thank you for ordering from Hyuna Store!`
+
+  // Provide simple buttons: show_items and received
+  await bot.telegram.sendMessage(
+    order.userId,
+    body,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📦 Show Items', `show_items:${order.id}`)],
+        [Markup.button.callback('✅ Mark as Received', `received:${order.id}`)]
+      ])
+    }
+  )
+}
+
+bot.hears(/^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i, async (ctx) => {
+  const [, id, gmail] = ctx.match
   const db = loadDB()
   const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
-  if (!order || !order.deliveredPassword) return ctx.reply('Password not available.')
-  await ctx.reply(`🔐 \`${order.deliveredPassword}\``, { parse_mode: 'Markdown' })
+
+  if (!order) return ctx.reply('Order not found.')
+  if (order.productId !== 'canva') return ctx.reply('This order does not require a Gmail address.')
+  if (order.status !== 'waiting_gmail') return ctx.reply('This order is not waiting for Gmail.')
+
+  order.gmail = gmail
+  order.status = 'preparing'
+  saveDB(db)
+
+  await ctx.reply(
+    `📧 Gmail received! 💗\n\nOrder: \`${id}\`\nGmail: \`${gmail}\`\n\n🌸 Your Canva invite is now being prepared.`,
+    { parse_mode: 'Markdown' }
+  )
+
+  if (ADMIN_ID) {
+    await bot.telegram.sendMessage(
+      ADMIN_ID,
+      `🧁 Canva Gmail received\nOrder: ${id}\nGmail: ${gmail}`
+    ).catch(() => {})
+  }
 })
 
 // ADMIN: confirm payment
@@ -417,11 +595,16 @@ bot.command('deliver', async (ctx) => {
 
   order.status = 'delivered'
   order.deliveredAt = new Date().toISOString()
-  order.deliveredEmail = email
-  order.deliveredPassword = password
+  order.deliveredItems = [{
+    productId: order.productId,
+    type: 'email_password',
+    email,
+    password,
+    addedAt: new Date().toISOString()
+  }]
   saveDB(db)
 
-  await deliverCredentials(order, email, password)
+  await deliverCredentials(order, order.deliveredItems)
   await ctx.reply(`✅ Delivered ${id}`)
 })
 
@@ -457,19 +640,48 @@ bot.command('canva_done', async (ctx) => {
 bot.command('stockadd', async (ctx) => {
   if (!isAdmin(ctx)) return
   const parts = ctx.message.text.split(/\s+/)
-  const [, productId, email, ...passParts] = parts
-  const password = passParts.join(' ')
-
-  if (!['gemini', 'capcut'].includes(productId) || !email || !password) {
-    return ctx.reply('Usage: /stockadd gemini|capcut email password')
+  const [, productId, firstParam, ...rest] = parts
+  if (!productId || !firstParam) {
+    return ctx.reply('Usage: /stockadd <productId> <email|link> [password if email_password]')
   }
 
-  const db = loadDB()
-  db.stock[productId] = db.stock[productId] || []
-  db.stock[productId].push({ email, password, addedAt: new Date().toISOString() })
-  saveDB(db)
+  const product = PRODUCTS[productId]
+  if (!product) return ctx.reply('Unknown productId.')
 
-  await ctx.reply(`✅ Added 1 ${productId} stock. Total: ${db.stock[productId].length}`)
+  const db = loadDB()
+  db.stock = db.stock || []
+
+  if (product.deliveryType === 'email_password') {
+    const password = rest.join(' ')
+    if (!password) return ctx.reply('Usage for email_password: /stockadd productId email password')
+    db.stock.push({
+      productId,
+      type: 'email_password',
+      email: firstParam,
+      password,
+      addedAt: new Date().toISOString()
+    })
+  } else if (product.deliveryType === 'link') {
+    // for link-based products, firstParam is the link
+    db.stock.push({
+      productId,
+      type: 'link',
+      link: firstParam,
+      addedAt: new Date().toISOString()
+    })
+  } else {
+    // generic: store as raw item
+    db.stock.push({
+      productId,
+      type: 'generic',
+      value: [firstParam, ...rest].join(' '),
+      addedAt: new Date().toISOString()
+    })
+  }
+
+  saveDB(db)
+  const totalForPid = db.stock.filter(s => s.productId === productId).length
+  await ctx.reply(`✅ Added 1 ${productId} stock. Total: ${totalForPid}`)
 })
 
 bot.command('orders', async (ctx) => {
@@ -479,7 +691,7 @@ bot.command('orders', async (ctx) => {
   if (!recent.length) return ctx.reply('No orders yet.')
 
   const text = recent.map(o =>
-    `${o.id} | ${o.productName} | ₱${o.price} | ${o.status} | ${o.userId}`
+    `${o.id} | ${o.productName} | qty:${o.quantity || 1} | total:₱${o.totalPrice || (o.pricePerItem || 0)} | ${o.status} | ${o.userId}`
   ).join('\n')
 
   await ctx.reply(`📦 Recent Orders\n\n${text}`)
