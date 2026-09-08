@@ -733,7 +733,6 @@ async function deliverCredentials(order, items) {
     order.userId,
     body,
     {
-      parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📦 Show Items', `show_items:${order.id}`)],
         [Markup.button.callback('✅ Mark as Received', `received:${order.id}`)]
