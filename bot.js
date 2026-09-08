@@ -308,19 +308,38 @@ async function processReceiptMedia(ctx, media) {
 
   const db = loadDB()
   const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
-  if (!order || order.status !== 'waiting_payment') {
-    delete pendingReceiptOrders[ctx.from.id]
-    await ctx.reply('This order is no longer waiting for a receipt.')
-    return true
-  }
 
-  order.receipt = {
-    fileId: media.fileId,
-    fileUniqueId: media.fileUniqueId,
-    mediaType: media.type,
-    receivedAt: new Date().toISOString(),
-    caption: ctx.message.caption || ''
-  }
+if (order && order.paymentExpiresAt && Date.now() > order.paymentExpiresAt) {
+  order.status = 'expired'
+  saveDB(db)
+  delete pendingReceiptOrders[ctx.from.id]
+
+  await ctx.reply(
+    '❌ Payment expired.\n\nPlease create a new order.'
+  )
+
+  return true
+}
+
+if (!order) {
+  delete pendingReceiptOrders[ctx.from.id]
+  await ctx.reply('❌ Order not found.')
+  return true
+}
+
+if (order.status !== 'waiting_payment') {
+  delete pendingReceiptOrders[ctx.from.id]
+  await ctx.reply('❌ This order is no longer waiting for payment.')
+  return true
+}
+
+order.receipt = {
+  fileId: media.fileId,
+  fileUniqueId: media.fileUniqueId,
+  mediaType: media.type,
+  receivedAt: new Date().toISOString(),
+  caption: ctx.message.caption || ''
+}
   order.receiptStatus = 'pending_verification'
   saveDB(db)
   delete pendingReceiptOrders[ctx.from.id]
