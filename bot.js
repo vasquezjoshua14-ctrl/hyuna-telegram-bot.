@@ -377,7 +377,45 @@ const sendReceipt = media.type === 'document'
   }
   return true
 }
+bot.action(/approve_(.+)/, async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('Unauthorized');
 
+  const id = ctx.match[1];
+  const db = loadDB();
+
+  const order = db.orders.find(o => o.id === id);
+  if (!order) return ctx.answerCbQuery('Order not found');
+
+  order.status = 'paid';
+  saveDB(db);
+
+  await ctx.answerCbQuery('Approved');
+
+  await ctx.reply(`✅ Order ${id} approved. Processing delivery...`);
+
+  await confirmPayment(order);
+});
+
+
+bot.action(/reject_(.+)/, async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('Unauthorized');
+
+  const id = ctx.match[1];
+  const db = loadDB();
+
+  const order = db.orders.find(o => o.id === id);
+  if (!order) return ctx.answerCbQuery('Order not found');
+
+  order.status = 'rejected';
+  saveDB(db);
+
+  await ctx.answerCbQuery('Rejected');
+
+  await bot.telegram.sendMessage(
+    order.userId,
+    `❌ Your payment for Order ${id} was rejected. Please contact admin.`
+  );
+});
 bot.on('photo', async (ctx, next) => {
   const photo = ctx.message.photo[ctx.message.photo.length - 1]
   const handled = await processReceiptMedia(ctx, {
