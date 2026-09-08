@@ -2,7 +2,11 @@ const { Telegraf, Markup } = require('telegraf')
 const fs = require('fs')
 const path = require('path')
 require('dotenv').config()
+const OpenAI = require('openai')
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
 const BOT_TOKEN = process.env.BOT_TOKEN
 const ADMIN_ID = Number(process.env.ADMIN_ID || 0)
 const CHANNEL_URL = process.env.CHANNEL_URL || 'https://t.me/YOUR_CHANNEL'
