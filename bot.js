@@ -485,7 +485,21 @@ bot.on('text', async (ctx, next) => {
     return ctx.reply('Product not found.')
   }
 
-  const db = loadDB()
+    const db = loadDB()
+  
+// Check stock availability before creating order
+if (product.deliveryType === 'link' || product.deliveryType === 'email_password') {
+  const availableStock = db.stock.filter(
+    s => s.productId === productId
+  ).length
+
+  if (q > availableStock) {
+    return ctx.reply(
+      `❌ Not enough stock.\n\nAvailable: ${availableStock}\nRequested: ${q}`
+    )
+  }
+}
+
   const order = {
     id: orderId(),
     userId: ctx.from.id,
