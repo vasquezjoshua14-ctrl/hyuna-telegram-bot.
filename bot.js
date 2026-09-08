@@ -208,7 +208,7 @@ bot.action(/^cancel:(HYU-.+)$/, async (ctx) => {
 bot.action('payment_guide', async (ctx) => {
   await ctx.answerCbQuery()
   await ctx.replyWithPhoto(
-  { source: './gcash-qr.png' },
+ { source: './GCash-MyQR-08092026123724.PNG.jpg' },
   {
     caption:
       '💳 *PAYMENT GUIDE* 🌸\n\n' +
