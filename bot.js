@@ -211,6 +211,7 @@ bot.action('payment_guide', async (ctx) => {
   '💳 *PAYMENT GUIDE* 🌸\n\n' +
   `📱 `📱 GCash Name: ${GCASH_NAME}\n` +
 `💰 GCash Number: ${GCASH_NUMBER}\n\n` +
+
 '3. Once payment is confirmed, your order status will update automatically.\n' +
   '4. Manual products will be prepared and delivered here.\n\n' +
   '💗 Keep your Order ID for reference.',
