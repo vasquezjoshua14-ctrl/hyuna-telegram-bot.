@@ -427,6 +427,8 @@ bot.on('text', async (ctx, next) => {
     totalPrice: product.price * q, // dynamic total price
     status: 'waiting_payment',
     createdAt: new Date().toISOString(),
+    paymentExpiresAt: Date.now() + 
+      (10 * 60 * 1000),
     gmail: null,
     deliveredAt: null,
     deliveredItems: [] // will hold delivered stock items (unified format)
