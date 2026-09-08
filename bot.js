@@ -64,6 +64,9 @@ const adminStockFlow = {}
 // temporary storage for admin stock deletion flow
 const adminDelStockFlow = {}
 
+// temporary storage for customers who are expected to send a receipt photo
+const pendingReceiptOrders = {}
+
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     const fresh = { orders: [], stock: [] } // stock is a unified array of stock items
@@ -257,9 +260,107 @@ bot.action('payment_guide', async (ctx) => {
     { source: './GCash-MyQR-08092026123724.PNG.jpg' },
     {
       caption,
-      parse_mode: 'Markdown'
+      parse_mode: 'Markdown',
+      ...(order
+        ? Markup.inlineKeyboard([
+            [Markup.button.callback('📸 Send Receipt', `send_receipt:${order.id}`)]
+          ])
+        : {})
     }
   )
+})
+
+// Ask the customer to send a receipt for a specific unpaid order.
+bot.action(/^send_receipt:(HYU-.+)$/, async (ctx) => {
+  await ctx.answerCbQuery()
+
+  const id = ctx.match[1]
+  const db = loadDB()
+  const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
+
+  if (!order) return ctx.reply('Order not found.')
+  if (order.status !== 'waiting_payment') {
+    return ctx.reply('This order is no longer waiting for payment.')
+  }
+
+  pendingReceiptOrders[ctx.from.id] = id
+  await ctx.reply(
+    `📸 Please send your GCash receipt screenshot here.\n\n` +
+    `🧾 Order ID: \`${id}\`\n\n` +
+    `Your receipt will be reviewed manually. Payment will not be approved automatically.`,
+    { parse_mode: 'Markdown' }
+  )
+})
+
+// Save the customer's receipt and notify the admin without approving payment.
+async function processReceiptMedia(ctx, media) {
+  const id = pendingReceiptOrders[ctx.from.id]
+  if (!id) return false
+
+  if (media.type === 'document' && !media.mimeType?.startsWith('image/')) {
+    await ctx.reply('❌ Please send the receipt as a photo or image file.')
+    return true
+  }
+
+  const db = loadDB()
+  const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
+  if (!order || order.status !== 'waiting_payment') {
+    delete pendingReceiptOrders[ctx.from.id]
+    await ctx.reply('This order is no longer waiting for a receipt.')
+    return true
+  }
+
+  order.receipt = {
+    fileId: media.fileId,
+    fileUniqueId: media.fileUniqueId,
+    mediaType: media.type,
+    receivedAt: new Date().toISOString(),
+    caption: ctx.message.caption || ''
+  }
+  order.receiptStatus = 'pending_verification'
+  saveDB(db)
+  delete pendingReceiptOrders[ctx.from.id]
+
+  await ctx.reply(
+    `✅ Receipt received for Order ID \`${id}\`.\n\n` +
+    `⏳ It is waiting for manual verification. Please do not send another payment.`,
+    { parse_mode: 'Markdown' }
+  )
+
+  if (ADMIN_ID) {
+    const adminCaption =
+      `📸 GCash receipt pending verification\n\n` +
+      `Order: ${id}\n` +
+      `Product: ${order.productName}\n` +
+      `Total: ₱${order.totalPrice}\n` +
+      `Buyer: @${order.username || 'no_username'} (${order.userId})`
+    const sendReceipt = media.type === 'document'
+      ? bot.telegram.sendDocument(ADMIN_ID, media.fileId, { caption: adminCaption })
+      : bot.telegram.sendPhoto(ADMIN_ID, media.fileId, { caption: adminCaption })
+    await sendReceipt.catch(() => {})
+  }
+  return true
+}
+
+bot.on('photo', async (ctx, next) => {
+  const photo = ctx.message.photo[ctx.message.photo.length - 1]
+  const handled = await processReceiptMedia(ctx, {
+    type: 'photo',
+    fileId: photo.file_id,
+    fileUniqueId: photo.file_unique_id
+  })
+  if (!handled) return next()
+})
+
+bot.on('document', async (ctx, next) => {
+  const document = ctx.message.document
+  const handled = await processReceiptMedia(ctx, {
+    type: 'document',
+    fileId: document.file_id,
+    fileUniqueId: document.file_unique_id,
+    mimeType: document.mime_type || ''
+  })
+  if (!handled) return next()
 })
 
 bot.action('my_orders', async (ctx) => {
@@ -282,7 +383,10 @@ bot.action('my_orders', async (ctx) => {
     const qty = o.quantity || 1
     const priceEach = o.pricePerItem || o.price || 0
     const total = o.totalPrice || priceEach * qty
-    return `🧾 \`${o.id}\`\n${o.productName} — ${qty} x ₱${priceEach} = ₱${total}\n${statusMap[o.status] || o.status}`
+    const receiptNote = o.receiptStatus === 'pending_verification'
+      ? '\n📸 Receipt Pending Verification'
+      : ''
+    return `🧾 \`${o.id}\`\n${o.productName} — ${qty} x ₱${priceEach} = ₱${total}\n${statusMap[o.status] || o.status}${receiptNote}`
   })
 
   await ctx.reply(`📦 *MY ORDERS*\n\n${lines.join('\n\n')}`, { parse_mode: 'Markdown' })
@@ -725,27 +829,33 @@ bot.action(/^addstock:(.+)$/, async (ctx) => {
   }
 })
 
-// Helper function to parse bulk numbered links
+// Extract every Gemini activation URL from the complete message. Copy/paste
+// sometimes adds zero-width characters inside a URL, so remove them first.
+function parseGeminiActivationLinks(text) {
+  const cleaned = String(text || '')
+    .replace(/[\u007F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180D\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFE00-\uFE0F\uFEFF]/g, '')
+
+  const matches = cleaned.match(
+    /https?:\/\/serviceactivation\.google\.com\/subscription\/new\/[^\s<>"'`]+/gi
+  ) || []
+
+  // Punctuation is commonly pasted immediately after a URL in a numbered
+  // list. It is not part of the activation link.
+  return matches.map(link => link.replace(/[),.;!?]+$/g, ''))
+}
+
+// Keep the existing parser available for any future non-Gemini link products.
 function parseBulkLinks(text) {
-  const lines = text.split('\n').filter(l => l.trim())
   const links = []
-  
-  for (const line of lines) {
-    const trimmed = line.replace(/[\u200B-\u200D\uFEFF]/g, '').trim() // Remove invisible Unicode
-    
-    // Try to match "Link N: URL" format
+  for (const line of String(text || '').split('\n').filter(l => l.trim())) {
+    const trimmed = line.replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
     const match = trimmed.match(/^[Ll]ink\s+\d+:\s*(https?:\/\/.+)$/i)
     if (match) {
-      const url = match[1].trim()
-      if (url.startsWith('http://') || url.startsWith('https://')) {
-        links.push(url)
-      }
+      links.push(match[1].trim())
     } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      // Plain link format
       links.push(trimmed)
     }
   }
-  
   return links
 }
 
@@ -769,13 +879,28 @@ bot.on('text', async (ctx, next) => {
   db.stock = db.stock || []
 
   let addedCount = 0
+  let duplicateCount = 0
 
   // Parse input based on delivery type
   if (product.deliveryType === 'link') {
-    // Parse bulk links (both "Link N: url" and plain url formats)
-    const links = parseBulkLinks(text)
+    // Gemini links are extracted from the entire message, regardless of
+    // labels, numbering, line breaks, spaces, or blank lines.
+    const links = productId === 'gemini'
+      ? parseGeminiActivationLinks(text)
+      : parseBulkLinks(text)
+    const existingGeminiLinks = new Set(
+      db.stock
+        .filter(stock => stock.productId === 'gemini' && stock.type === 'link')
+        .map(stock => stock.link)
+    )
+    const seenInMessage = new Set()
     
     for (const link of links) {
+      if (productId === 'gemini' && (existingGeminiLinks.has(link) || seenInMessage.has(link))) {
+        duplicateCount++
+        continue
+      }
+
       db.stock.push({
         productId,
         type: 'link',
@@ -784,10 +909,26 @@ bot.on('text', async (ctx, next) => {
       })
       flow.items.push(link)
       addedCount++
+      if (productId === 'gemini') {
+        seenInMessage.add(link)
+        existingGeminiLinks.add(link)
+      }
     }
     
     if (addedCount === 0) {
-      return ctx.reply('❌ No valid links found. Please send links starting with http:// or https://')
+      if (productId === 'gemini' && duplicateCount > 0) {
+        const totalForPid = db.stock.filter(s => s.productId === productId).length
+        delete adminStockFlow[ctx.from.id]
+        return ctx.reply(
+          `♻️ Skipped ${duplicateCount} duplicate link${duplicateCount === 1 ? '' : 's'}\n\n` +
+          `📦 Total ${product.name} stock: ${totalForPid}`
+        )
+      }
+      return ctx.reply(
+        productId === 'gemini'
+          ? '❌ No valid Gemini activation links found. Please send serviceactivation.google.com/subscription/new/ links.'
+          : '❌ No valid links found. Please send links starting with http:// or https://'
+      )
     }
   } else if (product.deliveryType === 'email_password') {
     // Accept email|password format
@@ -825,8 +966,11 @@ bot.on('text', async (ctx, next) => {
 
   // Confirm save
   const totalForPid = db.stock.filter(s => s.productId === productId).length
+  const duplicateSummary = productId === 'gemini' && duplicateCount > 0
+    ? `\n♻️ Skipped ${duplicateCount} duplicate link${duplicateCount === 1 ? '' : 's'}`
+    : ''
   await ctx.reply(
-    `✅ Added ${addedCount} ${product.name} stock\n\n📦 Total ${product.name} stock: ${totalForPid}`,
+    `✅ Added ${addedCount} ${product.name} stock${duplicateSummary}\n\n📦 Total ${product.name} stock: ${totalForPid}`,
     { parse_mode: 'Markdown' }
   )
 
