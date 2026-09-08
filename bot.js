@@ -663,6 +663,10 @@ async function confirmPayment(order) {
     }
   }
   // deliver first
+  console.log("ORDER PRODUCT:", live.productId)
+console.log("STOCK:", db.stock)
+console.log("TO DELIVER:", toDeliver)
+  
 await deliverCredentials(live, toDeliver)
 
 // remove stock after successful delivery
