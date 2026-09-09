@@ -1165,6 +1165,14 @@ try {
     `✨ Product: ${product.name}\n` +
     `📦 Available Stock: ${stockCount}\n\n` +
     `🛒 Available now. Thank you!`
+  if (db.users && db.users.length > 0) {
+  for (const buyer of db.users) {
+    await bot.telegram.sendMessage(
+      buyer.id,
+      notifyText
+    ).catch(() => {})
+  }
+  }
 
   // dito ilalagay natin ang listahan ng users/members na i-no-notify
 
