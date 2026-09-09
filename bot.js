@@ -1,19 +1,19 @@
-const { Telegraf, Markup } = require('telegraf')
-const fs = require('fs')
-const path = require('path')
-require('dotenv').config()
-const OpenAI = require('openai')
+const { Telegraf, Markup } = require("telegraf");
+const fs = require("fs");
+const path = require("path");
+require("dotenv").config();
+const OpenAI = require("openai");
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 async function checkPaymentReceipt(imageUrl) {
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: "gpt-4o-mini",
     messages: [
       {
-        role: 'system',
+        role: "system",
         content: `
 You are a payment receipt verification AI.
 
@@ -56,272 +56,276 @@ Return JSON only:
   "status": "",
   "confidence": 0
 }
-`
+`,
       },
       {
-        role: 'user',
+        role: "user",
         content: [
           {
-            type: 'text',
-            text: 'Analyze this payment receipt.'
+            type: "text",
+            text: "Analyze this payment receipt.",
           },
           {
-            type: 'image_url',
+            type: "image_url",
             image_url: {
-              url: imageUrl
-            }
-          }
-        ]
-      }
-    ]
-  })
+              url: imageUrl,
+            },
+          },
+        ],
+      },
+    ],
+  });
 
-  return response.choices[0].message.content
+  return response.choices[0].message.content;
 }
 
-const BOT_TOKEN = process.env.BOT_TOKEN
-const ADMIN_ID = Number(process.env.ADMIN_ID || 0)
-const CHANNEL_URL = process.env.CHANNEL_URL || 'https://t.me/YOUR_CHANNEL'
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'YOUR_ADMIN_USERNAME'
-const GCASH_NAME = process.env.GCASH_NAME || 'GCash Account'
-const GCASH_NUMBER = process.env.GCASH_NUMBER || '09XXXXXXXXX'
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_ID = Number(process.env.ADMIN_ID || 0);
+const CHANNEL_URL = process.env.CHANNEL_URL || "https://t.me/YOUR_CHANNEL";
+const CHANNEL_ID = process.env.CHANNEL_ID || "";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "YOUR_ADMIN_USERNAME";
+const GCASH_NAME = process.env.GCASH_NAME || "GCash Account";
+const GCASH_NUMBER = process.env.GCASH_NUMBER || "09XXXXXXXXX";
 
-if (!BOT_TOKEN) throw new Error('Missing BOT_TOKEN in .env')
+if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN in .env");
 if (!ADMIN_ID) {
-  console.warn('⚠️ ADMIN_ID is not set. Admin commands will not work.')
+  console.warn("⚠️ ADMIN_ID is not set. Admin commands will not work.");
 }
 
-const bot = new Telegraf(BOT_TOKEN)
+const bot = new Telegraf(BOT_TOKEN);
 
-const DB_FILE = path.join(__dirname, 'db.json')
-const WELCOME_IMAGE = path.join(__dirname, 'hyuna-welcome.png')
+const DB_FILE = path.join(__dirname, "db.json");
+const WELCOME_IMAGE = path.join(__dirname, "hyuna-welcome.png");
 
 const PRODUCTS = {
   gemini: {
-    id: 'gemini',
-    emoji: '🌷',
-    name: 'Gemini Pro / Flow',
+    id: "gemini",
+    emoji: "🌷",
+    name: "Gemini Pro / Flow",
     price: 100,
-    details: ['1K Credits', '18 Months'],
-    note: '⚠️ No warranty after claim',
-    deliveryType: 'link'
+    details: ["1K Credits", "18 Months"],
+    note: "⚠️ No warranty after claim",
+    deliveryType: "link",
   },
 
   capcut: {
-    id: 'capcut',
-    emoji: '🎀',
-    name: 'CapCut Pro',
+    id: "capcut",
+    emoji: "🎀",
+    name: "CapCut Pro",
     price: 150,
-    details: ['1 Month'],
-    note: '',
-    deliveryType: 'email_password'
+    details: ["1 Month"],
+    note: "",
+    deliveryType: "email_password",
   },
 
   chatgpt: {
-    id: 'chatgpt',
-    emoji: '💕',
-    name: 'ChatGPT Shared',
+    id: "chatgpt",
+    emoji: "💕",
+    name: "ChatGPT Shared",
     price: 450,
-    details: ['Shared by 4 persons', '1 device only', 'Stable account'],
-    note: '🛡 Full warranty • Manual account delivery up to 12 hours',
-    deliveryType: 'manual'
+    details: ["Shared by 4 persons", "1 device only", "Stable account"],
+    note: "🛡 Full warranty • Manual account delivery up to 12 hours",
+    deliveryType: "manual",
   },
 
   canva: {
-    id: 'canva',
-    emoji: '🧁',
-    name: 'Canva Pro',
+    id: "canva",
+    emoji: "🧁",
+    name: "Canva Pro",
     price: 30,
-    details: ['1 Month+', 'Via invite'],
-    note: '📧 Send Gmail after payment • Manual delivery',
-    deliveryType: 'manual_invite'
-  }
-}
+    details: ["1 Month+", "Via invite"],
+    note: "📧 Send Gmail after payment • Manual delivery",
+    deliveryType: "manual_invite",
+  },
+};
 
-const pendingOrders = {}
-const adminStockFlow = {}
-const adminDelStockFlow = {}
-const pendingReceiptOrders = {}
+const pendingOrders = {};
+const adminStockFlow = {};
+const adminDelStockFlow = {};
+const pendingReceiptOrders = {};
 
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     const fresh = {
       orders: [],
       stock: [],
-      users: []
-    }
+      users: [],
+    };
 
-    fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2))
-    return fresh
+    fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
+    return fresh;
   }
 
-  const raw = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
+  const raw = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
 
   if (raw.stock && !Array.isArray(raw.stock)) {
-    const unified = []
+    const unified = [];
 
     for (const [pid, items] of Object.entries(raw.stock)) {
-      if (!Array.isArray(items)) continue
+      if (!Array.isArray(items)) continue;
 
       for (const it of items) {
-        if (!it || typeof it !== 'object') continue
+        if (!it || typeof it !== "object") continue;
 
         if (it.email && it.password) {
           unified.push({
             productId: pid,
-            type: 'email_password',
+            type: "email_password",
             email: it.email,
             password: it.password,
-            addedAt: it.addedAt || new Date().toISOString()
-          })
+            addedAt: it.addedAt || new Date().toISOString(),
+          });
         } else if (it.link) {
           unified.push({
             productId: pid,
-            type: 'link',
+            type: "link",
             link: it.link,
-            addedAt: it.addedAt || new Date().toISOString()
-          })
+            addedAt: it.addedAt || new Date().toISOString(),
+          });
         }
       }
     }
 
-    raw.stock = unified
-    fs.writeFileSync(DB_FILE, JSON.stringify(raw, null, 2))
+    raw.stock = unified;
+    fs.writeFileSync(DB_FILE, JSON.stringify(raw, null, 2));
   }
 
-  raw.stock = raw.stock || []
-  raw.orders = raw.orders || []
-  raw.users = raw.users || []
+  raw.stock = raw.stock || [];
+  raw.orders = raw.orders || [];
+  raw.users = raw.users || [];
 
-  return raw
+  return raw;
 }
 
 function saveDB(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2))
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+async function notifyAllUsers(message) {
+  const db = loadDB();
+
+  for (const user of db.users) {
+    await bot.telegram.sendMessage(user.id, message).catch(() => {});
+  }
+
+  if (CHANNEL_ID) {
+    await bot.telegram.sendMessage(CHANNEL_ID, message).catch(() => {});
+  }
 }
 
 function orderId() {
-  const part = Math.random()
-    .toString(36)
-    .slice(2, 6)
-    .toUpperCase()
+  const part = Math.random().toString(36).slice(2, 6).toUpperCase();
 
-  return `HYU-${part}`
+  return `HYU-${part}`;
 }
 
 function isAdmin(ctx) {
-  const userId = Number(ctx.from?.id)
-  const isAllowed = userId === ADMIN_ID
+  const userId = Number(ctx.from?.id);
+  const isAllowed = userId === ADMIN_ID;
 
   if (process.env.DEBUG_ADMIN) {
     console.log(
       `[ADMIN CHECK] User: ${userId}, ADMIN_ID: ${ADMIN_ID}, Allowed: ${isAllowed}`
-    )
+    );
   }
 
-  return isAllowed
+  return isAllowed;
 }
 
 function normalizeReference(value) {
-  return String(value || '')
-    .replace(/\s+/g, '')
-    .trim()
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .trim();
 }
 
 function normalizePhone(value) {
-  return String(value || '').replace(/\D/g, '')
+  return String(value || "").replace(/\D/g, "");
 }
 
 function parseReceiptAmount(value) {
-  const cleaned = String(value ?? '')
-    .replace(/,/g, '')
-    .replace(/[^0-9.-]/g, '')
+  const cleaned = String(value ?? "")
+    .replace(/,/g, "")
+    .replace(/[^0-9.-]/g, "");
 
-  if (!cleaned) return NaN
+  if (!cleaned) return NaN;
 
-  return Number(cleaned)
+  return Number(cleaned);
 }
 
 function menuKeyboard() {
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('🛍 Products', 'products'),
-      Markup.button.callback('📦 My Orders', 'my_orders')
+      Markup.button.callback("🛍 Products", "products"),
+      Markup.button.callback("📦 My Orders", "my_orders"),
     ],
     [
-      Markup.button.callback('💳 Payment Guide', 'payment_guide'),
-      Markup.button.url('📢 Channel', CHANNEL_URL)
+      Markup.button.callback("💳 Payment Guide", "payment_guide"),
+      Markup.button.url("📢 Channel", CHANNEL_URL),
     ],
-    [
-      Markup.button.url(
-        '📩 Contact Admin',
-        `https://t.me/${ADMIN_USERNAME}`
-      )
-    ]
-  ])
+    [Markup.button.url("📩 Contact Admin", `https://t.me/${ADMIN_USERNAME}`)],
+  ]);
 }
 
 async function sendHome(ctx) {
   const caption =
-    '🌸 *Welcome to Hyuna Store!* 🌸\n' +
-    'Your cute & trusted digital shop 💗\n\n' +
-    'Choose an option below:'
+    "🌸 *Welcome to Hyuna Store!* 🌸\n" +
+    "Your cute & trusted digital shop 💗\n\n" +
+    "Choose an option below:";
 
   if (fs.existsSync(WELCOME_IMAGE)) {
     await ctx.replyWithPhoto(
       { source: WELCOME_IMAGE },
       {
         caption,
-        parse_mode: 'Markdown',
-        ...menuKeyboard()
+        parse_mode: "Markdown",
+        ...menuKeyboard(),
       }
-    )
+    );
   } else {
     await ctx.reply(caption, {
-      parse_mode: 'Markdown',
-      ...menuKeyboard()
-    })
+      parse_mode: "Markdown",
+      ...menuKeyboard(),
+    });
   }
 }
 
-bot.start(sendHome)
-bot.command('menu', sendHome)
+bot.start(sendHome);
+bot.command("menu", sendHome);
 
-bot.action('products', async (ctx) => {
-  await ctx.answerCbQuery()
+bot.action("products", async (ctx) => {
+  await ctx.answerCbQuery();
 
   let text =
-    '🌸✨ *HYUNA STORE — AVAILABLE PRODUCTS* ✨🌸\n' +
-    'Choose your fave below 💗\n\n'
+    "🌸✨ *HYUNA STORE — AVAILABLE PRODUCTS* ✨🌸\n" +
+    "Choose your fave below 💗\n\n";
 
   for (const p of Object.values(PRODUCTS)) {
-    text += `${p.emoji} *${p.name} — ₱${p.price}*\n`
+    text += `${p.emoji} *${p.name} — ₱${p.price}*\n`;
 
     for (const d of p.details) {
-      text += `✦ ${d}\n`
+      text += `✦ ${d}\n`;
     }
 
     if (p.note) {
-      text += `${p.note}\n`
+      text += `${p.note}\n`;
     }
 
-    text += '\n'
+    text += "\n";
   }
 
-  text += '🌸 _Please read the product details before ordering._'
+  text += "🌸 _Please read the product details before ordering._";
 
   await ctx.reply(text, {
-    parse_mode: 'Markdown',
+    parse_mode: "Markdown",
     ...Markup.inlineKeyboard([
-      [Markup.button.callback('🌷 Buy Gemini', 'buy:gemini')],
-      [Markup.button.callback('🎀 Buy CapCut', 'buy:capcut')],
-      [Markup.button.callback('💕 Buy ChatGPT', 'buy:chatgpt')],
-      [Markup.button.callback('🧁 Buy Canva', 'buy:canva')],
-      [Markup.button.callback('⬅️ Back to Menu', 'home')]
-    ])
-  })
-})
-
+      [Markup.button.callback("🌷 Buy Gemini", "buy:gemini")],
+      [Markup.button.callback("🎀 Buy CapCut", "buy:capcut")],
+      [Markup.button.callback("💕 Buy ChatGPT", "buy:chatgpt")],
+      [Markup.button.callback("🧁 Buy Canva", "buy:canva")],
+      [Markup.button.callback("⬅️ Back to Menu", "home")],
+    ]),
+  });
+});
 bot.action('home', async (ctx) => {
   await ctx.answerCbQuery()
   await sendHome(ctx)
@@ -657,7 +661,7 @@ async function processReceiptMedia(ctx, media) {
         ? confidence
         : 0,
     receivedAt: new Date().toISOString()
-  }
+      }
 
   /* * PASS = automatic payment approval. */
   if (automaticVerificationPassed) {
@@ -767,7 +771,8 @@ async function processReceiptMedia(ctx, media) {
       `AI reference: ${ref || 'Unreadable'}\n` +
       `AI confidence: ${Math.round(confidence * 100) || 0}%\n\n` +
       `Reason:\n${reasons.join('\n')}\n\n` +
-      `Buyer: @${order.username || 'no_username'} (${order.userId})`
+      `Buyer: ${(order.firstName || '')} ${(order.lastName || '')} ` +
+          `@${order.username || 'no_username'} (${order.userId})`
 
     /* * Manual fallback has Approve. * There is NO automatic rejection. */
     const keyboard = Markup.inlineKeyboard([
@@ -991,7 +996,7 @@ bot.on('text', async (ctx, next) => {
 
   // Check stock for instant delivery items
   if (
-    product.deliveryType === 'link' ||
+        product.deliveryType === 'link' ||
     product.deliveryType === 'email_password'
   ) {
 
@@ -1019,6 +1024,12 @@ bot.on('text', async (ctx, next) => {
 
     username:
       ctx.from.username || '',
+
+    firstName:
+      ctx.from.first_name || '',
+
+    lastName:
+      ctx.from.last_name || '',
 
     productId:
       product.id,
@@ -1072,6 +1083,12 @@ bot.on('text', async (ctx, next) => {
 
       username:
         ctx.from.username || '',
+
+      firstName:
+        ctx.from.first_name || '',
+
+      lastName:
+        ctx.from.last_name || '',
 
       createdAt:
         new Date().toISOString()
@@ -1315,7 +1332,7 @@ bot.command('stock', async (ctx) => {
 
     text +=
             `${p.emoji} ${p.name}: ${counts[p.id] || 0}\n`
-
+    
   }
 
 
