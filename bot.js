@@ -442,9 +442,7 @@ saveDB(db)
 
   return true
   }
-  )
-}
-}
+  }
   if (ADMIN_ID) {
     const reasons = []
    
