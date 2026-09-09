@@ -915,3 +915,388 @@ bot.on('photo', async (ctx, next) => {
 
   if (!handled) return next()
 })
+// ===============================
+// MY ORDERS
+// ===============================
+
+bot.action('my_orders', async (ctx) => {
+  await ctx.answerCbQuery()
+
+  const db = loadDB()
+
+  const orders = db.orders
+    .filter(o => o.userId === ctx.from.id)
+    .slice(-10)
+    .reverse()
+
+  if (!orders.length) {
+    return ctx.reply('📦 You have no orders yet.')
+  }
+
+  const statusMap = {
+    waiting_payment: '⏳ Waiting for Payment',
+    paid: '💗 Payment Confirmed',
+    preparing: '🌸 Preparing Delivery',
+    waiting_gmail: '📧 Waiting Gmail',
+    delivered: '✅ Delivered',
+    cancelled: '❌ Cancelled'
+  }
+
+  const lines = orders.map(o => {
+
+    const qty = o.quantity || 1
+    const price = o.pricePerItem || 0
+    const total = o.totalPrice || price * qty
+
+    const receipt =
+      o.receiptStatus === 'pending_verification'
+        ? '\n📸 Receipt Pending Admin Review'
+        : ''
+
+    return (
+      `🧾 \`${o.id}\`\n` +
+      `${o.productName}\n` +
+      `${qty} x ₱${price} = ₱${total}\n` +
+      `${statusMap[o.status] || o.status}` +
+      receipt
+    )
+  })
+
+  await ctx.reply(
+    `📦 *MY ORDERS*\n\n${lines.join('\n\n')}`,
+    {
+      parse_mode: 'Markdown'
+    }
+  )
+})
+
+
+// ===============================
+// QUANTITY ORDER HANDLER
+// ===============================
+
+bot.on('text', async (ctx, next) => {
+
+  const pending =
+    pendingOrders[ctx.from.id]
+
+  if (!pending) {
+    return next()
+  }
+
+  const text =
+    (ctx.message.text || '').trim()
+
+  const q = Number(text)
+
+  if (
+    !Number.isInteger(q) ||
+    q < 1 ||
+    q > 50
+  ) {
+    return ctx.reply(
+      '❌ Invalid quantity. Enter 1-50.'
+    )
+  }
+
+
+  const product =
+    PRODUCTS[pending.productId]
+
+  if (!product) {
+    delete pendingOrders[ctx.from.id]
+    return ctx.reply(
+      'Product not found.'
+    )
+  }
+
+
+  const db = loadDB()
+
+
+  // Check stock for instant delivery items
+  if (
+    product.deliveryType === 'link' ||
+    product.deliveryType === 'email_password'
+  ) {
+
+    const available =
+      db.stock.filter(
+        s =>
+          s.productId === product.id
+      ).length
+
+
+    if (q > available) {
+
+      return ctx.reply(
+        `❌ Not enough stock.\n\nAvailable: ${available}\nRequested: ${q}`
+      )
+    }
+  }
+
+
+  const order = {
+
+    id: orderId(),
+
+    userId: ctx.from.id,
+
+    username:
+      ctx.from.username || '',
+
+    productId:
+      product.id,
+
+    productName:
+      product.name,
+
+    quantity: q,
+
+    pricePerItem:
+      product.price,
+
+    totalPrice:
+      product.price * q,
+
+    status:
+      'waiting_payment',
+
+    createdAt:
+      new Date().toISOString(),
+
+    paymentExpiresAt:
+      Date.now() +
+      (10 * 60 * 1000),
+
+    gmail: null,
+
+    deliveredItems: []
+  }
+
+
+  db.orders.push(order)
+
+
+  if (!db.users) {
+    db.users = []
+  }
+
+
+  const exists =
+    db.users.find(
+      u => u.id === ctx.from.id
+    )
+
+
+  if (!exists) {
+
+    db.users.push({
+
+      id: ctx.from.id,
+
+      username:
+        ctx.from.username || '',
+
+      createdAt:
+        new Date().toISOString()
+
+    })
+  }
+
+
+  saveDB(db)
+
+
+  delete pendingOrders[ctx.from.id]
+
+
+  await ctx.reply(
+
+    `🎀 *ORDER CREATED!*\n\n` +
+
+    `${product.emoji} Product: *${product.name}*\n` +
+
+    `🔢 Quantity: *${q}*\n` +
+
+    `💸 Price: *₱${product.price} each*\n` +
+
+    `💰 Total: *₱${order.totalPrice}*\n\n` +
+
+    `🧾 Order ID: \`${order.id}\`\n\n` +
+
+    `⏳ Waiting for Payment`,
+
+    {
+
+      parse_mode: 'Markdown',
+
+      ...Markup.inlineKeyboard([
+
+        [
+
+          Markup.button.callback(
+            '💳 Payment Guide',
+            'payment_guide'
+          )
+
+        ],
+
+        [
+
+          Markup.button.callback(
+            '❌ Cancel Order',
+            `cancel:${order.id}`
+          )
+
+        ]
+
+      ])
+
+    }
+
+  )
+
+
+  if (ADMIN_ID) {
+
+    await bot.telegram.sendMessage(
+
+      ADMIN_ID,
+
+      `🛎 New Order\n\n` +
+
+      `Order: ${order.id}\n` +
+
+      `Product: ${product.name}\n` +
+
+      `Qty: ${q}\n` +
+
+      `Total: ₱${order.totalPrice}\n` +
+
+      `Buyer: @${order.username || 'no_username'} (${order.userId})`
+
+    ).catch(() => {})
+
+  }
+
+})
+
+
+// ===============================
+// GMAIL HANDLER (CANVA)
+// ===============================
+
+bot.hears(
+  /^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i,
+
+  async (ctx) => {
+
+    const [, id, gmail] =
+      ctx.match
+
+
+    const db = loadDB()
+
+
+    const order =
+      db.orders.find(
+        o =>
+          o.id === id &&
+          o.userId === ctx.from.id
+      )
+
+
+    if (!order) {
+
+      return ctx.reply(
+        'Order not found.'
+      )
+    }
+
+
+    if (order.productId !== 'canva') {
+
+      return ctx.reply(
+        'This order does not require Gmail.'
+      )
+    }
+
+
+    if (
+      order.status !== 'waiting_gmail'
+    ) {
+
+      return ctx.reply(
+        'This order is not waiting for Gmail.'
+      )
+    }
+
+
+    order.gmail = gmail
+
+    order.status =
+      'preparing'
+
+
+    saveDB(db)
+
+
+    await ctx.reply(
+
+      `📧 Gmail received!\n\n` +
+
+      `Order: \`${id}\`\n` +
+
+      `Gmail: \`${gmail}\`\n\n` +
+
+      `🌸 Preparing your Canva invite.`,
+
+      {
+        parse_mode: 'Markdown'
+      }
+
+    )
+
+
+    if (ADMIN_ID) {
+
+      await bot.telegram.sendMessage(
+
+        ADMIN_ID,
+
+        `🧁 Canva Gmail Received\n\n` +
+
+        `Order: ${id}\n` +
+
+        `Gmail: ${gmail}`
+
+      ).catch(() => {})
+
+    }
+
+  }
+)
+
+
+// ===============================
+// RECEIVED BUTTON
+// ===============================
+
+bot.action(
+  /^received:(HYU-.+)$/,
+
+  async (ctx) => {
+
+    await ctx.answerCbQuery(
+      'Thank you! 💗'
+    )
+
+
+    await ctx.reply(
+      '🌸 Thank you for confirming. Enjoy your order! 💕'
+    )
+
+  }
+)
+
