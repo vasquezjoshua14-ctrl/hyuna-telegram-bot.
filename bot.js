@@ -410,34 +410,30 @@ try {
 } catch (e) {
   receiptData = null
 }
-let sameName = false
-let sameNumber = false
 let sameAmount = false
+let usedReference = null
+
 if (receiptData) {
-  ref = String(receiptData.reference || '').replace(/\s+/g, '').trim()
-const usedReference = ref
-  ? db.orders.find(o =>
-      o.id !== order.id &&
-      String(o.receipt?.reference || '').replace(/\s+/g, '').trim() === ref
-    )
-  : null
- 
-if (usedReference) {
-  receiptData.duplicateReference = true
-} else {
-  receiptData.duplicateReference = false
-} 
-  sameName = receiptData.recipient
-    ?.toLowerCase()
-    .includes(GCASH_NAME.toLowerCase())
 
-  sameNumber = receiptData.number
-    ?.replace(/\D/g, '')
-    .includes(GCASH_NUMBER.replace(/\D/g, ''))
+  ref = String(receiptData.reference || '')
+    .replace(/\s+/g, '')
+    .trim()
 
-  sameAmount = Number(receiptData.amount) === Number(order.totalPrice)
+  usedReference = ref
+    ? db.orders.find(o =>
+        o.id !== order.id &&
+        String(o.receipt?.reference || '')
+          .replace(/\s+/g, '')
+          .trim() === ref
+      )
+    : null
+
+  receiptData.duplicateReference = !!usedReference
+
+  sameAmount =
+    Number(receiptData.amount) === Number(order.totalPrice)
 }
-  if (!sameName || !sameNumber || !sameAmount || receiptData.duplicateReference) {
+ if (!sameAmount || receiptData?.duplicateReference || !receiptTimeValid) {
   order.receiptStatus = 'pending_verification'
 saveDB(db)
    await ctx.reply(
