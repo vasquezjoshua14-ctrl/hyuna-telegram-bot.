@@ -377,7 +377,33 @@ if (order.status !== 'waiting_payment') {
   return true
 }
 
-order.receipt = {
+const receiptCheck = await checkGCashReceipt(media.fileId)
+let receiptData
+
+try {
+  receiptData = JSON.parse(receiptCheck)
+} catch (e) {
+  receiptData = null
+}
+
+if (receiptData) {
+  const sameName = receiptData.recipient
+    ?.toLowerCase()
+    .includes(GCASH_NAME.toLowerCase())
+
+  const sameNumber = receiptData.number
+    ?.replace(/\D/g, '')
+    .includes(GCASH_NUMBER.replace(/\D/g, ''))
+
+  const sameAmount = Number(receiptData.amount) === Number(order.totalPrice)
+
+  if (!sameName || !sameNumber || !sameAmount) {
+    await ctx.reply(
+      '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
+    )
+  }
+}
+  order.receipt = {
   fileId: media.fileId,
   fileUniqueId: media.fileUniqueId,
   mediaType: media.type,
