@@ -415,37 +415,52 @@ if (usedReference) {
   const sameAmount = Number(receiptData.amount) === Number(order.totalPrice)
 
   if (!sameName || !sameNumber || !sameAmount || receiptData.duplicateReference) {
-  await ctx.reply(
+  order.receiptStatus = 'pending_verification'
+saveDB(db)
+   await ctx.reply(
     '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
   )
-}
-}
-
-order.receipt = {
-  fileId: media.fileId,
-  fileUniqueId: media.fileUniqueId,
-  mediaType: media.type,
+} else {
+  order.status = 'paid'
+  order.receiptStatus = 'verified'
+  order.receipt = {
+    fileId: media.fileId,
+    fileUniqueId: media.fileUniqueId,
+    mediaType: media.type,
     reference: ref,
-  receivedAt: new Date().toISOString(),
-  caption: ctx.message.caption || ''
-}
-  order.receiptStatus = 'pending_verification'
+    receivedAt: new Date().toISOString()
+  }
+
   saveDB(db)
   delete pendingReceiptOrders[ctx.from.id]
 
   await ctx.reply(
-    `✅ Receipt received for Order ID \`${id}\`.\n\n` +
-    `⏳ It is waiting for manual verification. Please do not send another payment.`,
-    { parse_mode: 'Markdown' }
+    '✅ Payment verified automatically! Your order is now processing.'
   )
 
+  await confirmPayment(order)
+
+  return true
+  }
+  )
+}
+}
   if (ADMIN_ID) {
-    const adminCaption =
-      `📸 GCash receipt pending verification\n\n` +
-      `Order: ${id}\n` +
-      `Product: ${order.productName}\n` +
-      `Total: ₱${order.totalPrice}\n` +
-      `Buyer: @${order.username || 'no_username'} (${order.userId})`
+    const reasons = []
+   
+if (!sameName) reasons.push('❌ Wrong GCash name')
+if (!sameNumber) reasons.push('❌ Wrong GCash number')
+if (!sameAmount) reasons.push('❌ Wrong amount')
+if (receiptData?.duplicateReference) reasons.push('❌ Duplicate reference')
+if (!ref) reasons.push('❌ Missing reference')
+
+const adminCaption =
+`⚠️ Suspicious GCash receipt\n\n` +
+`Order: ${id}\n` +
+`Product: ${order.productName}\n` +
+`Total: ₱${order.totalPrice}\n\n` +
+`Reason:\n${reasons.join('\n')}\n\n` +
+`Buyer: @${order.username || 'no_username'} (${order.userId})`
     const keyboard = Markup.inlineKeyboard([
   [
     Markup.button.callback('✅ Approve', `approve_${id}`),
