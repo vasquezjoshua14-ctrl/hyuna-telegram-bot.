@@ -440,11 +440,14 @@ const receiptTimeValid =
 }
 }
  if (!sameAmount || receiptData?.duplicateReference || !receiptTimeValid) {
+
   order.receiptStatus = 'pending_verification'
-saveDB(db)
-   await ctx.reply(
+  saveDB(db)
+
+  await ctx.reply(
     '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
   )
+
 } else {
   order.status = 'paid'
   order.receiptStatus = 'verified'
