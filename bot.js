@@ -6,8 +6,8 @@ const OpenAI = require('openai')
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-})
-async function checkGCashReceipt(imageUrl) {
+async function checkGcashReceipt(imageUrl) {
+  console.log("checkGcashReceipt loaded");
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
