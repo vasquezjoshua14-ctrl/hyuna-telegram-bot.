@@ -382,8 +382,8 @@ if (order.status !== 'waiting_payment') {
 const fileLink = await bot.telegram.getFileLink(media.fileId)
 
 const receiptCheck = await checkGcashReceipt(fileLink.href)
-let receiptData
-
+ let receiptData
+let ref = ''
 try {
   receiptData = JSON.parse(receiptCheck)
 } catch (e) {
@@ -391,8 +391,7 @@ try {
 }
 
 if (receiptData) {
-  const ref = String(receiptData.reference || '').replace(/\s+/g, '').trim()
-
+  ref = String(receiptData.reference || '').replace(/\s+/g, '').trim()
 const usedReference = ref
   ? db.orders.find(o =>
       o.id !== order.id &&
