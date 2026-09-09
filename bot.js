@@ -1358,142 +1358,86 @@ bot.command('stock', async (ctx) => {
 
 // Add link stock
 bot.command('addlink', async (ctx) => {
-
   if (!isAdmin(ctx)) {
-    return
+    return ctx.reply('❌ Unauthorized')
   }
 
+  delete pendingOrders[ctx.from.id]
+
   adminStockFlow[ctx.from.id] = {
-    type: 'link'
+    type: 'gemini_links'
   }
 
   await ctx.reply(
-    'Send product id and link:\n\nExample:\n gemini https://link.com'
+    '🌷 Send Gemini links now.\n\n' +
+    'One link per line.\n' +
+    'You can add up to 50 links at once.'
   )
-
 })
-
 
 // Add email/password stock
 bot.command('addaccount', async (ctx) => {
-
-  if (!isAdmin(ctx)) {
-    return
-  }
-
-
-  adminStockFlow[ctx.from.id] = {
-    type: 'email_password'
-  }
-
-
-  await ctx.reply(
-    'Send product id email password:\n\nExample:\ncapcut test@gmail.com pass123'
-  )
-
-})
-
-
-// Admin stock input
+  // Admin stock input
 bot.on('text', async (ctx, next) => {
 
-  const flow =
-    adminStockFlow[ctx.from.id]
-
+  const flow = adminStockFlow[ctx.from.id]
 
   if (!flow) {
     return next()
   }
 
-
   if (!isAdmin(ctx)) {
     return next()
   }
 
 
-  const parts =
-    ctx.message.text.trim().split(/\s+/)
+  // GEMINI LINK STOCK
+  if (flow.type === 'gemini_links') {
 
-
-  const productId =
-    parts.shift()
-
-
-  if (!PRODUCTS[productId]) {
-
-    return ctx.reply(
-      'Invalid product id.'
-    )
-
-  }
-
-
-  const db = loadDB()
-
-
-  if (flow.type === 'link') {
-
-    const link = parts.join(' ')
-
-    db.stock.push({
-
-      productId,
-
-      type: 'link',
-
-      link,
-
-      addedAt:
-        new Date().toISOString()
-
-    })
-
-  }
-
-
-  if (flow.type === 'email_password') {
-
-    const email = parts[0]
-    const password = parts[1]
-
-
-    if (!email || !password) {
-
-      return ctx.reply(
-        'Invalid format.'
+    const links = ctx.message.text
+      .split('\n')
+      .map(x => x.trim())
+      .filter(x =>
+        x.startsWith('http://') ||
+        x.startsWith('https://')
       )
+      .slice(0,50)
+
+
+    if (!links.length) {
+      return ctx.reply(
+        '❌ Send links only.'
+      )
+    }
+
+
+    const db = loadDB()
+
+
+    for (const link of links) {
+
+      db.stock.push({
+        productId: 'gemini',
+        type: 'link',
+        link,
+        addedAt: new Date().toISOString()
+      })
 
     }
 
 
-    db.stock.push({
+    saveDB(db)
 
-      productId,
+    delete adminStockFlow[ctx.from.id]
 
-      type: 'email_password',
 
-      email,
-
-      password,
-
-      addedAt:
-        new Date().toISOString()
-
-    })
-
+    return ctx.reply(
+      `✅ Added ${links.length} Gemini links.`
+    )
   }
 
 
-  saveDB(db)
-
-
-  delete adminStockFlow[ctx.from.id]
-
-
-  await ctx.reply(
-    '✅ Stock added.'
-  )
-
+  return next()
 })
 
 
