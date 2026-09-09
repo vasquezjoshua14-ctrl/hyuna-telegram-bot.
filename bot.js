@@ -387,6 +387,20 @@ try {
 }
 
 if (receiptData) {
+  const ref = String(receiptData.reference || '').replace(/\s+/g, '').trim()
+
+const usedReference = ref
+  ? db.orders.find(o =>
+      o.id !== order.id &&
+      String(o.receipt?.reference || '').replace(/\s+/g, '').trim() === ref
+    )
+  : null
+
+if (usedReference) {
+  receiptData.duplicateReference = true
+} else {
+  receiptData.duplicateReference = false
+}
   const sameName = receiptData.recipient
     ?.toLowerCase()
     .includes(GCASH_NAME.toLowerCase())
@@ -397,8 +411,7 @@ if (receiptData) {
 
   const sameAmount = Number(receiptData.amount) === Number(order.totalPrice)
 
-  if (!sameName || !sameNumber || !sameAmount) {
-    await ctx.reply(
+  if (!sameName || !sameNumber || !sameAmount || receiptData.duplicateReference) {
       '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
     )
   }
@@ -407,6 +420,7 @@ if (receiptData) {
   fileId: media.fileId,
   fileUniqueId: media.fileUniqueId,
   mediaType: media.type,
+    reference: ref,
   receivedAt: new Date().toISOString(),
   caption: ctx.message.caption || ''
 }
