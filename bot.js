@@ -1377,8 +1377,22 @@ bot.command('addlink', async (ctx) => {
 
 // Add email/password stock
 bot.command('addaccount', async (ctx) => {
+
+  if (!isAdmin(ctx)) {
+    return ctx.reply('❌ Unauthorized')
+  }
+
+  adminStockFlow[ctx.from.id] = {
+    type: 'email_password'
+  }
+
+  await ctx.reply(
+    'Send product id email password:\n\nExample:\ncapcut test@gmail.com pass123'
+  )
+
+})
   // Admin stock input
-bot.on('text', async (ctx, next) => {
+  bot.on('text', async (ctx, next) => {
 
   const flow = adminStockFlow[ctx.from.id]
 
