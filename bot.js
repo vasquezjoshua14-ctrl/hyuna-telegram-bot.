@@ -402,7 +402,7 @@ if (order.status !== 'waiting_payment') {
 
 const fileLink = await bot.telegram.getFileLink(media.fileId)
 
-const receiptCheck = await checkGcashReceipt(fileLink.href)
+const receiptCheck = await checkPaymentReceipt(fileLink.href)
  let receiptData
 let ref = ''
 try {
