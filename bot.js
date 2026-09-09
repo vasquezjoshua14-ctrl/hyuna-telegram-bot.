@@ -7,6 +7,50 @@ const OpenAI = require('openai')
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
+async function checkGCashReceipt(imageUrl) {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: "Read GCash receipt images. Return JSON only."
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `
+Extract:
+- recipient name
+- recipient number
+- amount
+- date and time
+- reference number
+
+Return JSON:
+{
+ recipient:"",
+ number:"",
+ amount:"",
+ datetime:"",
+ reference:""
+}
+`
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: imageUrl
+            }
+          }
+        ]
+      }
+    ]
+  })
+
+  return response.choices[0].message.content
+}
 const BOT_TOKEN = process.env.BOT_TOKEN
 const ADMIN_ID = Number(process.env.ADMIN_ID || 0)
 const CHANNEL_URL = process.env.CHANNEL_URL || 'https://t.me/YOUR_CHANNEL'
