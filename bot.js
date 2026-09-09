@@ -1427,10 +1427,12 @@ bot.command('addaccount', async (ctx) => {
     saveDB(db)
 
     await notifyAllUsers(
-      `🌸 HYUNA STORE UPDATE 🌸\n\n` +
-      `✨ New stock available!\n\n` +
-      `🌷 Gemini Pro / Flow is back in stock.\n\n` +
-      `🛒 You can order now!`
+  `🌸 HYUNA STORE UPDATE 🌸\n\n` +
+  `✨ New stock available!\n\n` +
+  `🛒 ORDER NOW\n` +
+  `https://t.me/AITOOLSHyuna_Bot?start=shop\n\n` +
+  `💗 Thank you for supporting us!`
+);
     )
 
     delete adminStockFlow[ctx.from.id]
