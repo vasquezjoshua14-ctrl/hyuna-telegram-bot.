@@ -605,6 +605,18 @@ if (product.deliveryType === 'link' || product.deliveryType === 'email_password'
     deliveredItems: [] // will hold delivered stock items (unified format)
   }
   db.orders.push(order)
+  if (!db.users) db.users = []
+
+const buyer = db.users.find(u => u.id === ctx.from.id)
+
+if (!buyer) {
+  db.users.push({
+    id: ctx.from.id,
+    username: ctx.from.username || '',
+    createdAt: new Date().toISOString()
+  })
+}
+
   saveDB(db)
 
   delete pendingOrders[ctx.from.id]
