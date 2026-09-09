@@ -116,7 +116,8 @@ const PRODUCTS = {
     note: "",
     deliveryType: "email_password",
   },
-      chatgpt: {
+
+  chatgpt: {
     id: "chatgpt",
     emoji: "💕",
     name: "ChatGPT Shared",
@@ -129,8 +130,7 @@ const PRODUCTS = {
     note: "🛡 Full warranty • Manual account delivery up to 12 hours",
     deliveryType: "manual",
   },
-
-  canva: {
+    canva: {
     id: "canva",
     emoji: "🧁",
     name: "Canva Pro",
@@ -426,15 +426,15 @@ bot.action(/^buy:(.+)$/, async (ctx) => {
     "🛒 Ilan ang order? (1-50)\nHalimbawa: 5"
   );
 });
+id="q4part"
 bot.action(/^cancel:(HYU-.+)$/, async (ctx) => {
   await ctx.answerCbQuery();
 
   const id = ctx.match[1];
-
   const db = loadDB();
 
   const order = db.orders.find(
-    (o) =>
+    o =>
       o.id === id &&
       o.userId === ctx.from.id
   );
@@ -471,7 +471,7 @@ bot.action("payment_guide", async (ctx) => {
 
   const order = db.orders
     .filter(
-      (o) =>
+      o =>
         o.userId === ctx.from.id &&
         o.status === "waiting_payment"
     )
@@ -523,11 +523,10 @@ bot.action(
     await ctx.answerCbQuery();
 
     const id = ctx.match[1];
-
     const db = loadDB();
 
     const order = db.orders.find(
-      (o) =>
+      o =>
         o.id === id &&
         o.userId === ctx.from.id
     );
@@ -564,7 +563,7 @@ async function processReceiptMedia(ctx, media) {
   const db = loadDB();
 
   const order = db.orders.find(
-    (o) =>
+    o =>
       o.id === id &&
       o.userId === ctx.from.id
   );
@@ -603,10 +602,10 @@ async function processReceiptMedia(ctx, media) {
     );
   }
 
-
   let receiptTimeValid = false;
 
   if (receiptData?.datetime) {
+
     const receiptDate =
       new Date(receiptData.datetime);
 
@@ -621,8 +620,7 @@ async function processReceiptMedia(ctx, media) {
           new Date().toLocaleString(
             "en-US",
             {
-              timeZone:
-                "Asia/Manila",
+              timeZone: "Asia/Manila",
             }
           )
         );
@@ -632,8 +630,7 @@ async function processReceiptMedia(ctx, media) {
           receiptDate.toLocaleString(
             "en-US",
             {
-              timeZone:
-                "Asia/Manila",
+              timeZone: "Asia/Manila",
             }
           )
         );
@@ -647,7 +644,6 @@ async function processReceiptMedia(ctx, media) {
           10 * 60 * 1000;
     }
   }
-
 
   order.receipt = {
     fileId: media.fileId,
@@ -663,11 +659,12 @@ async function processReceiptMedia(ctx, media) {
   if (receiptTimeValid) {
 
     order.status = "paid";
-
     order.receiptStatus =
       "verified";
 
     saveDB(db);
+
+    delete pendingReceiptOrders[ctx.from.id];
 
     await ctx.reply(
       "✅ Payment verified automatically! Your order is now processing."
@@ -683,6 +680,8 @@ async function processReceiptMedia(ctx, media) {
     "pending_verification";
 
   saveDB(db);
+
+  delete pendingReceiptOrders[ctx.from.id];
 
   await ctx.reply(
     "⏳ Receipt received. Waiting for admin verification."
