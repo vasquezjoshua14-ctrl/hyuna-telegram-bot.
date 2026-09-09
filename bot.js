@@ -156,9 +156,10 @@ function loadDB() {
   }
 
   // Ensure shape
-  raw.stock = raw.stock || []
-  raw.orders = raw.orders || []
-  return raw
+raw.stock = raw.stock || []
+raw.orders = raw.orders || []
+raw.users = raw.users || []
+return raw
 }
 
 function saveDB(db) {
