@@ -1309,7 +1309,18 @@ bot.action(
 // ===============================
 // ADMIN STOCK COMMANDS
 // ===============================
+bot.command('admin', async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.reply('❌ Unauthorized')
+  }
 
+  await ctx.reply(
+    `👑 ADMIN PANEL\n\n` +
+    `/stock - View stock\n` +
+    `/addlink - Add link stock\n` +
+    `/addaccount - Add email/password stock`
+  )
+})
 bot.command('stock', async (ctx) => {
 
   if (!isAdmin(ctx)) {
