@@ -1143,7 +1143,23 @@ bot.on('text', async (ctx, next) => {
 
   saveDB(db)
 
-  // Confirm save
+// Notify buyers/members about new stock
+try {
+  const stockCount = db.stock.filter(s => s.productId === productId).length
+
+  const notifyText =
+    `📢 New Stock Added!\n\n` +
+    `✨ Product: ${product.name}\n` +
+    `📦 Available Stock: ${stockCount}\n\n` +
+    `🛒 Available now. Thank you!`
+
+  // dito ilalagay natin ang listahan ng users/members na i-no-notify
+
+} catch (e) {
+  console.log('Stock notify error:', e.message)
+}
+
+// Confirm save
   const totalForPid = db.stock.filter(s => s.productId === productId).length
   const duplicateSummary = productId === 'gemini' && duplicateCount > 0
     ? `\n♻️ Skipped ${duplicateCount} duplicate link${duplicateCount === 1 ? '' : 's'}`
