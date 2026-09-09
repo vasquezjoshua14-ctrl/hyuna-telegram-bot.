@@ -1299,4 +1299,408 @@ bot.action(
 
   }
 )
+// ===============================
+// ADMIN STOCK COMMANDS
+// ===============================
 
+bot.command('stock', async (ctx) => {
+
+  if (!isAdmin(ctx)) {
+    return
+  }
+
+  const db = loadDB()
+
+  const counts = {}
+
+  for (const item of db.stock) {
+
+    counts[item.productId] =
+      (counts[item.productId] || 0) + 1
+
+  }
+
+
+  let text =
+    '📦 STOCK LIST\n\n'
+
+
+  for (const p of Object.values(PRODUCTS)) {
+
+    text +=
+      `${p.emoji} ${p.name}: ${counts[p.id] || 0}\n`
+
+  }
+
+
+  await ctx.reply(text)
+
+})
+
+
+// Add link stock
+bot.command('addlink', async (ctx) => {
+
+  if (!isAdmin(ctx)) {
+    return
+  }
+
+  adminStockFlow[ctx.from.id] = {
+    type: 'link'
+  }
+
+  await ctx.reply(
+    'Send product id and link:\n\nExample:\n gemini https://link.com'
+  )
+
+})
+
+
+// Add email/password stock
+bot.command('addaccount', async (ctx) => {
+
+  if (!isAdmin(ctx)) {
+    return
+  }
+
+
+  adminStockFlow[ctx.from.id] = {
+    type: 'email_password'
+  }
+
+
+  await ctx.reply(
+    'Send product id email password:\n\nExample:\ncapcut test@gmail.com pass123'
+  )
+
+})
+
+
+// Admin stock input
+bot.on('text', async (ctx, next) => {
+
+  const flow =
+    adminStockFlow[ctx.from.id]
+
+
+  if (!flow) {
+    return next()
+  }
+
+
+  if (!isAdmin(ctx)) {
+    return next()
+  }
+
+
+  const parts =
+    ctx.message.text.trim().split(/\s+/)
+
+
+  const productId =
+    parts.shift()
+
+
+  if (!PRODUCTS[productId]) {
+
+    return ctx.reply(
+      'Invalid product id.'
+    )
+
+  }
+
+
+  const db = loadDB()
+
+
+  if (flow.type === 'link') {
+
+    const link = parts.join(' ')
+
+    db.stock.push({
+
+      productId,
+
+      type: 'link',
+
+      link,
+
+      addedAt:
+        new Date().toISOString()
+
+    })
+
+  }
+
+
+  if (flow.type === 'email_password') {
+
+    const email = parts[0]
+    const password = parts[1]
+
+
+    if (!email || !password) {
+
+      return ctx.reply(
+        'Invalid format.'
+      )
+
+    }
+
+
+    db.stock.push({
+
+      productId,
+
+      type: 'email_password',
+
+      email,
+
+      password,
+
+      addedAt:
+        new Date().toISOString()
+
+    })
+
+  }
+
+
+  saveDB(db)
+
+
+  delete adminStockFlow[ctx.from.id]
+
+
+  await ctx.reply(
+    '✅ Stock added.'
+  )
+
+})
+
+
+// ===============================
+// DELIVERY FUNCTION
+// ===============================
+
+async function confirmPayment(order) {
+
+  const db = loadDB()
+
+  const fresh =
+    db.orders.find(
+      o => o.id === order.id
+    )
+
+
+  if (!fresh) {
+    return
+  }
+
+
+  const product =
+    PRODUCTS[fresh.productId]
+
+
+  if (!product) {
+    return
+  }
+
+
+
+  // Manual products
+
+  if (
+    product.deliveryType === 'manual'
+  ) {
+
+    fresh.status =
+      'preparing'
+
+    saveDB(db)
+
+
+    await bot.telegram.sendMessage(
+
+      fresh.userId,
+
+      `💗 Payment confirmed!\n\n` +
+
+      `Order: ${fresh.id}\n\n` +
+
+      `🌸 Your order is being prepared manually.`
+
+    )
+
+    return
+  }
+
+
+
+  // Canva
+
+  if (
+    product.deliveryType === 'manual_invite'
+  ) {
+
+    fresh.status =
+      'waiting_gmail'
+
+    saveDB(db)
+
+
+    await bot.telegram.sendMessage(
+
+      fresh.userId,
+
+      `🧁 Payment confirmed!\n\n` +
+
+      `Order: ${fresh.id}\n\n` +
+
+      `Please send your Gmail:\n\n` +
+
+      `GMAIL ${fresh.id} your@gmail.com`
+
+    )
+
+    return
+  }
+
+
+
+  // Stock delivery
+
+  const available =
+    db.stock.filter(
+      s =>
+        s.productId === fresh.productId
+    )
+
+
+  const items =
+    available.slice(
+      0,
+      fresh.quantity
+    )
+
+
+  if (
+    items.length < fresh.quantity
+  ) {
+
+    fresh.status =
+      'preparing'
+
+    saveDB(db)
+
+
+    await bot.telegram.sendMessage(
+
+      fresh.userId,
+
+      `✅ Payment confirmed.\n\n` +
+
+      `⏳ Preparing delivery.`
+
+    )
+
+    return
+  }
+
+
+
+  fresh.deliveredItems =
+    items
+
+
+  db.stock =
+    db.stock.filter(
+      s => !items.includes(s)
+    )
+
+
+  fresh.status =
+    'delivered'
+
+
+  fresh.deliveredAt =
+    new Date().toISOString()
+
+
+  saveDB(db)
+
+
+
+  let delivery =
+
+    `🎉 PAYMENT CONFIRMED!\n\n` +
+
+    `🧾 Order: ${fresh.id}\n\n`
+
+
+
+  for (const item of items) {
+
+    if (item.type === 'link') {
+
+      delivery +=
+        `🔗 Link:\n${item.link}\n\n`
+
+    }
+
+
+    if (
+      item.type === 'email_password'
+    ) {
+
+      delivery +=
+        `📧 Email: ${item.email}\n` +
+
+        `🔑 Password: ${item.password}\n\n`
+
+    }
+
+  }
+
+
+  await bot.telegram.sendMessage(
+
+    fresh.userId,
+
+    delivery
+
+  )
+
+
+}
+
+
+// ===============================
+// START BOT
+// ===============================
+
+bot.catch((err) => {
+
+  console.error(
+    'BOT ERROR:',
+    err
+  )
+
+})
+
+
+bot.launch()
+
+console.log(
+  '🌸 Hyuna Store Bot Started'
+)
+
+process.once(
+  'SIGINT',
+  () => bot.stop('SIGINT')
+)
+
+process.once(
+  'SIGTERM',
+  () => bot.stop('SIGTERM')
+)
