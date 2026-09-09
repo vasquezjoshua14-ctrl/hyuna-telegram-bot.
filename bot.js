@@ -412,8 +412,10 @@ if (usedReference) {
   const sameAmount = Number(receiptData.amount) === Number(order.totalPrice)
 
   if (!sameName || !sameNumber || !sameAmount || receiptData.duplicateReference) {
-      '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
-    )
+  await ctx.reply(
+    '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
+  )
+  }
   }
 }
   order.receipt = {
