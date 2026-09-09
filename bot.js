@@ -1,12 +1,12 @@
-const { Telegraf, Markup } = require('telegraf')
-const fs = require('fs')
-const path = require('path')
-require('dotenv').config()
-const OpenAI = require('openai')
+const { Telegraf, Markup } = require("telegraf");
+const fs = require("fs");
+const path = require("path");
+require("dotenv").config();
+const OpenAI = require("openai");
 
- const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 async function checkPaymentReceipt(imageUrl) {
   const response = await openai.chat.completions.create({
@@ -14,309 +14,330 @@ async function checkPaymentReceipt(imageUrl) {
     messages: [
       {
         role: "system",
-        content: `
-You are a payment receipt verification AI.
-
-Read any payment receipt image.
-It can be GCash, MariBank, Maya, bank transfer, or other e-wallet.
-
-Do not require a fixed format.
-
-Check if it looks like a real completed transaction.
-
-Extract:
-- payment method
-- recipient
-- recipient number if available
-- amount
-- date and time
-- reference number / transaction ID
-- transaction status
-
-Do not reject because of name formatting.
-Names may have dots, spaces, masking, or abbreviations.
-
-If unsure, send for manual review.
-
-Return JSON only:
-
-{
-"is_receipt": true,
-"payment_method": "",
-"recipient": "",
-"recipient_number": "",
-"amount": "",
-"datetime": "",
-"reference_number": "",
-"status": "",
-"confidence": 0
-}
-`
+        content: ` You are a payment receipt verification AI. Analyze payment receipt images from GCash, Maya, MariBank, banks, and other e-wallets. Do not require one fixed receipt format. Do not reject a receipt only because a recipient name is masked, abbreviated, contains dots, spaces, or has a different display format. Determine whether the image appears to show a completed payment transaction. Extract: - payment method - recipient - recipient number if visible - amount - transaction date and time - reference number / transaction ID - transaction status IMPORTANT: - Never invent information that cannot be read. - Use an empty string for unreadable/missing fields. - "confidence" must be a number from 0 to 1. - "is_receipt" should be true only when the image appears to be a payment receipt. - For datetime, return ISO 8601 including timezone when you can determine it. - If you are uncertain, lower the confidence instead of inventing data. Return JSON only: { "is_receipt": true, "payment_method": "", "recipient": "", "recipient_number": "", "amount": "", "datetime": "", "reference_number": "", "status": "", "confidence": 0 } `,
       },
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: "Analyze this payment receipt."
+            text: "Analyze this payment receipt.",
           },
           {
             type: "image_url",
             image_url: {
-              url: imageUrl
-            }
-          }
-        ]
-      }
-    ]
-  })
+              url: imageUrl,
+            },
+          },
+        ],
+      },
+    ],
+  });
 
-  return response.choices[0].message.content
+  return response.choices[0].message.content;
 }
-const BOT_TOKEN = process.env.BOT_TOKEN
-const ADMIN_ID = Number(process.env.ADMIN_ID || 0)
-const CHANNEL_URL = process.env.CHANNEL_URL || 'https://t.me/YOUR_CHANNEL'
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'YOUR_ADMIN_USERNAME'
-const GCASH_NAME = process.env.GCASH_NAME || 'GCash Account'
-const GCASH_NUMBER = process.env.GCASH_NUMBER || '09XXXXXXXXX'
-if (!BOT_TOKEN) throw new Error('Missing BOT_TOKEN in .env')
-if (!ADMIN_ID) console.warn('⚠️ ADMIN_ID is not set. Admin commands will not work.')
 
-const bot = new Telegraf(BOT_TOKEN)
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_ID = Number(process.env.ADMIN_ID || 0);
+const CHANNEL_URL = process.env.CHANNEL_URL || "https://t.me/YOUR_CHANNEL";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "YOUR_ADMIN_USERNAME";
+const GCASH_NAME = process.env.GCASH_NAME || "GCash Account";
+const GCASH_NUMBER = process.env.GCASH_NUMBER || "09XXXXXXXXX";
 
-const DB_FILE = path.join(__dirname, 'db.json')
-const WELCOME_IMAGE = path.join(__dirname, 'hyuna-welcome.png')
-const PAYMENT_QR_IMAGE = path.join(__dirname, 'GCash-MyQR-08092026123724.PNG.jpg')
+if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN in .env");
+if (!ADMIN_ID) {
+  console.warn("⚠️ ADMIN_ID is not set. Admin commands will not work.");
+}
+
+const bot = new Telegraf(BOT_TOKEN);
+
+const DB_FILE = path.join(__dirname, "db.json");
+const WELCOME_IMAGE = path.join(__dirname, "hyuna-welcome.png");
+
 const PRODUCTS = {
   gemini: {
-    id: 'gemini',
-    emoji: '🌷',
-    name: 'Gemini Pro / Flow',
+    id: "gemini",
+    emoji: "🌷",
+    name: "Gemini Pro / Flow",
     price: 100,
-    details: ['1K Credits', '18 Months'],
-    note: '⚠️ No warranty after claim',
-    deliveryType: 'link' // send link only
+    details: ["1K Credits", "18 Months"],
+    note: "⚠️ No warranty after claim",
+    deliveryType: "link",
   },
+
   capcut: {
-    id: 'capcut',
-    emoji: '🎀',
-    name: 'CapCut Pro',
+    id: "capcut",
+    emoji: "🎀",
+    name: "CapCut Pro",
     price: 150,
-    details: ['1 Month'],
-    note: '',
-    deliveryType: 'email_password' // send email+password from stock
+    details: ["1 Month"],
+    note: "",
+    deliveryType: "email_password",
   },
+
   chatgpt: {
-    id: 'chatgpt',
-    emoji: '💕',
-    name: 'ChatGPT Shared',
+    id: "chatgpt",
+    emoji: "💕",
+    name: "ChatGPT Shared",
     price: 450,
-    details: ['Shared by 4 persons', '1 device only', 'Stable account'],
-    note: '🛡 Full warranty • Manual account delivery up to 12 hours',
-    deliveryType: 'manual' // admin will deliver
+    details: ["Shared by 4 persons", "1 device only", "Stable account"],
+    note: "🛡 Full warranty • Manual account delivery up to 12 hours",
+    deliveryType: "manual",
   },
+
   canva: {
-    id: 'canva',
-    emoji: '🧁',
-    name: 'Canva Pro',
+    id: "canva",
+    emoji: "🧁",
+    name: "Canva Pro",
     price: 30,
-    details: ['1 Month+', 'Via invite'],
-    note: '📧 Send Gmail after payment • Manual delivery',
-    deliveryType: 'manual_invite' // ask for gmail and admin will invite
-  }
-}
+    details: ["1 Month+", "Via invite"],
+    note: "📧 Send Gmail after payment • Manual delivery",
+    deliveryType: "manual_invite",
+  },
+};
 
-// temporary in-memory pending orders while waiting for quantity confirmation
-const pendingOrders = {}
-
-// temporary storage for admin stock adding flow
-const adminStockFlow = {}
-
-// temporary storage for admin stock deletion flow
-const adminDelStockFlow = {}
-
-// temporary storage for customers who are expected to send a receipt photo
-const pendingReceiptOrders = {}
+const pendingOrders = {};
+const adminStockFlow = {};
+const adminDelStockFlow = {};
+const pendingReceiptOrders = {};
 
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
-    const fresh = { orders: [], stock: [] } // stock is a unified array of stock items
-    fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2))
-    return fresh
-  }
-  const raw = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
+    const fresh = {
+      orders: [],
+      stock: [],
+      users: [],
+    };
 
-  // Migration: old format had stock as object keyed by product id.
-  // Convert to unified array: { productId, type, email, password, link, addedAt }
+    fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
+    return fresh;
+  }
+
+  const raw = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+
   if (raw.stock && !Array.isArray(raw.stock)) {
-    const unified = []
+    const unified = [];
+
     for (const [pid, items] of Object.entries(raw.stock)) {
-      if (Array.isArray(items)) {
-        for (const it of items) {
-          if (it && typeof it === 'object') {
-            if (it.email && it.password) {
-              unified.push({
-                productId: pid,
-                type: 'email_password',
-                email: it.email,
-                password: it.password,
-                addedAt: it.addedAt || new Date().toISOString()
-              })
-            } else if (it.link) {
-              unified.push({
-                productId: pid,
-                type: 'link',
-                link: it.link,
-                addedAt: it.addedAt || new Date().toISOString()
-              })
-            }
-          }
+      if (!Array.isArray(items)) continue;
+
+      for (const it of items) {
+        if (!it || typeof it !== "object") continue;
+
+        if (it.email && it.password) {
+          unified.push({
+            productId: pid,
+            type: "email_password",
+            email: it.email,
+            password: it.password,
+            addedAt: it.addedAt || new Date().toISOString(),
+          });
+        } else if (it.link) {
+          unified.push({
+            productId: pid,
+            type: "link",
+            link: it.link,
+            addedAt: it.addedAt || new Date().toISOString(),
+          });
         }
       }
     }
-    raw.stock = unified
-    fs.writeFileSync(DB_FILE, JSON.stringify(raw, null, 2))
+
+    raw.stock = unified;
+    fs.writeFileSync(DB_FILE, JSON.stringify(raw, null, 2));
   }
 
-  // Ensure shape
-raw.stock = raw.stock || []
-raw.orders = raw.orders || []
-raw.users = raw.users || []
-return raw
+  raw.stock = raw.stock || [];
+  raw.orders = raw.orders || [];
+  raw.users = raw.users || [];
+
+  return raw;
 }
 
 function saveDB(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2))
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
 function orderId() {
-  const part = Math.random().toString(36).slice(2, 6).toUpperCase()
-  return `HYU-${part}`
+  const part = Math.random().toString(36).slice(2, 6).toUpperCase();
+
+  return `HYU-${part}`;
 }
 
 function isAdmin(ctx) {
-  const userId = Number(ctx.from?.id)
-  const isAllowed = userId === ADMIN_ID
-  // Debug: log admin check
+  const userId = Number(ctx.from?.id);
+  const isAllowed = userId === ADMIN_ID;
+
   if (process.env.DEBUG_ADMIN) {
-    console.log(`[ADMIN CHECK] User: ${userId}, ADMIN_ID: ${ADMIN_ID}, Allowed: ${isAllowed}`)
+    console.log(
+      `[ADMIN CHECK] User: ${userId}, ADMIN_ID: ${ADMIN_ID}, Allowed: ${isAllowed}`
+    );
   }
-  return isAllowed
+
+  return isAllowed;
+}
+
+function normalizeReference(value) {
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function parseReceiptAmount(value) {
+  const cleaned = String(value ?? "")
+    .replace(/,/g, "")
+    .replace(/[^0-9.-]/g, "");
+
+  if (!cleaned) return NaN;
+
+  return Number(cleaned);
 }
 
 function menuKeyboard() {
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('🛍 Products', 'products'),
-      Markup.button.callback('📦 My Orders', 'my_orders')
+      Markup.button.callback("🛍 Products", "products"),
+      Markup.button.callback("📦 My Orders", "my_orders"),
     ],
     [
-      Markup.button.callback('💳 Payment Guide', 'payment_guide'),
-      Markup.button.url('📢 Channel', CHANNEL_URL)
+      Markup.button.callback("💳 Payment Guide", "payment_guide"),
+      Markup.button.url("📢 Channel", CHANNEL_URL),
     ],
-    [
-      Markup.button.url('📩 Contact Admin', `https://t.me/${ADMIN_USERNAME}`)
-    ]
-  ])
+    [Markup.button.url("📩 Contact Admin", `https://t.me/${ADMIN_USERNAME}`)],
+  ]);
 }
 
 async function sendHome(ctx) {
   const caption =
-    '🌸 *Welcome to Hyuna Store!* 🌸\n' +
-    'Your cute & trusted digital shop 💗\n\n' +
-    'Choose an option below:'
+    "🌸 *Welcome to Hyuna Store!* 🌸\n" +
+    "Your cute & trusted digital shop 💗\n\n" +
+    "Choose an option below:";
 
   if (fs.existsSync(WELCOME_IMAGE)) {
     await ctx.replyWithPhoto(
       { source: WELCOME_IMAGE },
-      { caption, parse_mode: 'Markdown', ...menuKeyboard() }
-    )
+      {
+        caption,
+        parse_mode: "Markdown",
+        ...menuKeyboard(),
+      }
+    );
   } else {
-    await ctx.reply(caption, { parse_mode: 'Markdown', ...menuKeyboard() })
+    await ctx.reply(caption, {
+      parse_mode: "Markdown",
+      ...menuKeyboard(),
+    });
   }
 }
 
-bot.start(sendHome)
-bot.command('menu', sendHome)
+bot.start(sendHome);
+bot.command("menu", sendHome);
 
-bot.action('products', async (ctx) => {
-  await ctx.answerCbQuery()
+bot.action("products", async (ctx) => {
+  await ctx.answerCbQuery();
 
-  let text = '🌸✨ *HYUNA STORE — AVAILABLE PRODUCTS* ✨🌸\n'
-  text += 'Choose your fave below 💗\n\n'
+  let text =
+    "🌸✨ *HYUNA STORE — AVAILABLE PRODUCTS* ✨🌸\n" +
+    "Choose your fave below 💗\n\n";
 
   for (const p of Object.values(PRODUCTS)) {
-    text += `${p.emoji} *${p.name} — ₱${p.price}*\n`
-    for (const d of p.details) text += `✦ ${d}\n`
-    if (p.note) text += `${p.note}\n`
-    text += '\n'
+    text += `${p.emoji} *${p.name} — ₱${p.price}*\n`;
+
+    for (const d of p.details) {
+      text += `✦ ${d}\n`;
+    }
+
+    if (p.note) {
+      text += `${p.note}\n`;
+    }
+
+    text += "\n";
   }
 
-  text += '🌸 _Please read the product details before ordering._'
+  text += "🌸 _Please read the product details before ordering._";
 
   await ctx.reply(text, {
-    parse_mode: 'Markdown',
+    parse_mode: "Markdown",
     ...Markup.inlineKeyboard([
-      [Markup.button.callback('🌷 Buy Gemini', 'buy:gemini')],
-      [Markup.button.callback('🎀 Buy CapCut', 'buy:capcut')],
-      [Markup.button.callback('💕 Buy ChatGPT', 'buy:chatgpt')],
-      [Markup.button.callback('🧁 Buy Canva', 'buy:canva')],
-      [Markup.button.callback('⬅️ Back to Menu', 'home')]
-    ])
-  })
-})
+      [Markup.button.callback("🌷 Buy Gemini", "buy:gemini")],
+      [Markup.button.callback("🎀 Buy CapCut", "buy:capcut")],
+      [Markup.button.callback("💕 Buy ChatGPT", "buy:chatgpt")],
+      [Markup.button.callback("🧁 Buy Canva", "buy:canva")],
+      [Markup.button.callback("⬅️ Back to Menu", "home")],
+    ]),
+  });
+});
 
-bot.action('home', async (ctx) => {
-  await ctx.answerCbQuery()
-  await sendHome(ctx)
-})
+bot.action("home", async (ctx) => {
+  await ctx.answerCbQuery();
+  await sendHome(ctx);
+});
 
 bot.action(/^buy:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery()
-  const productId = ctx.match[1]
-  const product = PRODUCTS[productId]
-  if (!product) return ctx.reply('Product not found.')
+  await ctx.answerCbQuery();
 
-  // store pending purchase and ask for quantity
-  pendingOrders[ctx.from.id] = {
-    productId,
-    createdAt: new Date().toISOString()
+  const productId = ctx.match[1];
+  const product = PRODUCTS[productId];
+
+  if (!product) {
+    return ctx.reply("Product not found.");
   }
 
-  await ctx.reply('🛒 Ilan ang order? (1-50)\nHalimbawa: 5', {
+  pendingOrders[ctx.from.id] = {
+    productId,
+    createdAt: new Date().toISOString(),
+  };
+
+  await ctx.reply("🛒 Ilan ang order? (1-50)\nHalimbawa: 5", {
     reply_markup: {
-      force_reply: false
-    }
-  })
-})
+      force_reply: false,
+    },
+  });
+});
 
 bot.action(/^cancel:(HYU-.+)$/, async (ctx) => {
-  await ctx.answerCbQuery()
-  const id = ctx.match[1]
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
+  await ctx.answerCbQuery();
 
-  if (!order) return ctx.reply('Order not found.')
-  if (order.status !== 'waiting_payment') return ctx.reply('This order can no longer be cancelled.')
+  const id = ctx.match[1];
+  const db = loadDB();
 
-  order.status = 'cancelled'
-  saveDB(db)
-  await ctx.reply(`❌ Order \`${id}\` cancelled.`, { parse_mode: 'Markdown' })
-})
+  const order = db.orders.find((o) => o.id === id && o.userId === ctx.from.id);
 
-bot.action('payment_guide', async (ctx) => {
-  await ctx.answerCbQuery()
+  if (!order) {
+    return ctx.reply("Order not found.");
+  }
 
-  const db = loadDB()
-  // find latest waiting_payment order for this user
-  const order = db.orders.filter(o => o.userId === ctx.from.id && o.status === 'waiting_payment').slice(-1)[0]
+  if (order.status !== "waiting_payment") {
+    return ctx.reply("This order can no longer be cancelled.");
+  }
+
+  order.status = "cancelled";
+  saveDB(db);
+
+  delete pendingReceiptOrders[ctx.from.id];
+
+  await ctx.reply(`❌ Order \`${id}\` cancelled.`, { parse_mode: "Markdown" });
+});
+
+bot.action("payment_guide", async (ctx) => {
+  await ctx.answerCbQuery();
+
+  const db = loadDB();
+
+  const order = db.orders
+    .filter((o) => o.userId === ctx.from.id && o.status === "waiting_payment")
+    .slice(-1)[0];
 
   let caption =
-    '💳 *PAYMENT GUIDE* 🌸\n\n' +
+    "💳 *PAYMENT GUIDE* 🌸\n\n" +
     `📱 GCash Name: ${GCASH_NAME}\n` +
     `💰 GCash Number: ${GCASH_NUMBER}\n\n` +
-    'Scan the QR code to pay.\n\n' +
-    '💗 Keep your Order ID for reference.\n\n'
+    "Scan the QR code to pay.\n\n" +
+    "💗 Keep your Order ID for reference.\n\n";
 
   if (order) {
     caption =
@@ -325,1037 +346,862 @@ bot.action('payment_guide', async (ctx) => {
       `Quantity: *${order.quantity}*\n` +
       `Price: *₱${order.pricePerItem} each*\n` +
       `Total: *₱${order.totalPrice}*\n\n` +
-      caption
+      caption;
   }
 
   await ctx.replyWithPhoto(
-    { source: PAYMENT_QR_IMAGE },
+    { source: "./GCash-MyQR-08092026123724.PNG.jpg" },
     {
       caption,
-      parse_mode: 'Markdown',
+      parse_mode: "Markdown",
       ...(order
         ? Markup.inlineKeyboard([
-            [Markup.button.callback('📸 Send Receipt', `send_receipt:${order.id}`)]
+            [
+              Markup.button.callback(
+                "📸 Send Receipt",
+                `send_receipt:${order.id}`
+              ),
+            ],
           ])
-        : {})
+        : {}),
     }
-  )
-})
+  );
+});
 
-// Ask the customer to send a receipt for a specific unpaid order.
 bot.action(/^send_receipt:(HYU-.+)$/, async (ctx) => {
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery();
 
-  const id = ctx.match[1]
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
+  const id = ctx.match[1];
+  const db = loadDB();
 
-  if (!order) return ctx.reply('Order not found.')
-  if (order.status !== 'waiting_payment') {
-    return ctx.reply('This order is no longer waiting for payment.')
+  const order = db.orders.find((o) => o.id === id && o.userId === ctx.from.id);
+
+  if (!order) {
+    return ctx.reply("Order not found.");
   }
 
-  pendingReceiptOrders[ctx.from.id] = id
-  await ctx.reply(
-    `📸 Please send your GCash receipt screenshot here.\n\n` +
-    `🧾 Order ID: \`${id}\`\n\n` +
-    `Your receipt will be reviewed manually. Payment will not be approved automatically.`,
-    { parse_mode: 'Markdown' }
-  )
-})
+  if (order.status !== "waiting_payment") {
+    return ctx.reply("This order is no longer waiting for payment.");
+  }
 
-// Save the customer's receipt and notify the admin without approving payment.
+  pendingReceiptOrders[ctx.from.id] = id;
+
+  await ctx.reply(
+    `📸 Please send your payment receipt screenshot here.\n\n` +
+      `🧾 Order ID: \`${id}\`\n\n` +
+      `🤖 Your receipt will be checked automatically.\n` +
+      `If it cannot be verified confidently, it will be sent to admin for manual verification.`,
+    {
+      parse_mode: "Markdown",
+    }
+  );
+});
+
 async function processReceiptMedia(ctx, media) {
-  const id = pendingReceiptOrders[ctx.from.id]
-  if (!id) return false
+  const id = pendingReceiptOrders[ctx.from.id];
 
-  if (media.type === 'document' && !media.mimeType?.startsWith('image/')) {
-    await ctx.reply('❌ Please send the receipt as a photo or image file.')
-    return true
+  if (!id) return false;
+
+  if (media.type === "document" && !media.mimeType?.startsWith("image/")) {
+    await ctx.reply("❌ Please send the receipt as a photo or image file.");
+    return true;
   }
 
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
+  const db = loadDB();
 
-if (order && order.paymentExpiresAt && Date.now() > order.paymentExpiresAt) {
-  order.status = 'expired'
-  saveDB(db)
-  delete pendingReceiptOrders[ctx.from.id]
+  const order = db.orders.find((o) => o.id === id && o.userId === ctx.from.id);
 
-  await ctx.reply(
-    '❌ Payment expired.\n\nPlease create a new order.'
-  )
+  if (!order) {
+    delete pendingReceiptOrders[ctx.from.id];
 
-  return true
-}
+    await ctx.reply("❌ Order not found.");
+    return true;
+  }
 
-if (!order) {
-  delete pendingReceiptOrders[ctx.from.id]
-  await ctx.reply('❌ Order not found.')
-  return true
-}
+  if (order.status !== "waiting_payment") {
+    delete pendingReceiptOrders[ctx.from.id];
 
-if (order.status !== 'waiting_payment') {
-  delete pendingReceiptOrders[ctx.from.id]
-  await ctx.reply('❌ This order is no longer waiting for payment.')
-  return true
-}
+    await ctx.reply("❌ This order is no longer waiting for payment.");
 
-const fileLink = await bot.telegram.getFileLink(media.fileId)
+    return true;
+  }
 
-const receiptCheck = await checkPaymentReceipt(fileLink.href)
- let receiptData
-let ref = ''
-try {
-  receiptData = JSON.parse(receiptCheck)
-} catch (e) {
-  receiptData = null
-}
-let sameAmount = false
-let usedReference = null
-let receiptTimeValid = false
-let sameName = false
-let sameNumber = false
+  /* * IMPORTANT: * We do NOT hard-reject an uploaded receipt just because * the order's 10-minute payment window has passed. * * A receipt outside the allowed time goes to the admin * for manual verification instead. */
+  const orderWindowExpired =
+    Boolean(order.paymentExpiresAt) &&
+    Date.now() > Number(order.paymentExpiresAt);
 
-if (receiptData) {
+  let receiptData = null;
+  let aiError = null;
 
-  ref = String(receiptData.reference_number || '')
-    .replace(/\s+/g, '')
-    .trim()
+  try {
+    const fileLink = await bot.telegram.getFileLink(media.fileId);
 
-  usedReference = ref
-    ? db.orders.find(o =>
-        o.id !== order.id &&
-        String(o.receipt?.reference || '')
-          .replace(/\s+/g, '')
-          .trim() === ref
-      )
-    : null
+    const receiptCheck = await checkPaymentReceipt(fileLink.href);
 
-  receiptData.duplicateReference = !!usedReference
+    const cleaned = String(receiptCheck || "")
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
 
-  sameAmount =
-  Number(receiptData.amount) === Number(order.totalPrice)
+    receiptData = JSON.parse(cleaned);
+  } catch (error) {
+    console.error("Receipt AI verification error:", error);
 
-  receiptTimeValid =
-    receiptData.datetime &&
-    (Date.now() - new Date(receiptData.datetime).getTime()) <= (10 * 60 * 1000)
+    aiError = error;
+    receiptData = null;
+  }
 
-  const receiptRecipient = String(receiptData.recipient || '').toLowerCase()
-  sameName = !!receiptRecipient && receiptRecipient.includes(String(GCASH_NAME).toLowerCase())
+  let ref = "";
+  let sameAmount = false;
+  let usedReference = null;
+  let receiptTimeValid = false;
+  let recipientNumberValid = true;
+  let isReceipt = false;
+  let confidence = 0;
+  let confidenceOkay = false;
 
-  const receiptRecipientNumber = String(receiptData.recipient_number || '').replace(/\D/g, '')
-  sameNumber = !!receiptRecipientNumber && receiptRecipientNumber === String(GCASH_NUMBER).replace(/\D/g, '')
-}
- if (!sameAmount || receiptData?.duplicateReference || !receiptTimeValid) {
-  order.receiptStatus = 'pending_verification'
-saveDB(db)
-   await ctx.reply(
-    '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
-  )
-} else {
-  order.status = 'paid'
-  order.receiptStatus = 'verified'
+  if (receiptData) {
+    /* * The AI response uses reference_number. * "reference" is kept only as backward compatibility. */
+    ref = normalizeReference(
+      receiptData.reference_number || receiptData.reference
+    );
+
+    usedReference = ref
+      ? db.orders.find(
+          (o) =>
+            o.id !== order.id &&
+            normalizeReference(o.receipt?.reference) === ref
+        )
+      : null;
+
+    receiptData.duplicateReference = Boolean(usedReference);
+
+    const extractedAmount = parseReceiptAmount(receiptData.amount);
+
+    sameAmount =
+      Number.isFinite(extractedAmount) &&
+      extractedAmount === Number(order.totalPrice);
+
+    if (receiptData.datetime) {
+      const receiptTimestamp = new Date(receiptData.datetime).getTime();
+
+      if (Number.isFinite(receiptTimestamp)) {
+        const ageMs = Date.now() - receiptTimestamp;
+
+        receiptTimeValid = ageMs >= 0 && ageMs <= 10 * 60 * 1000;
+      }
+    }
+
+    isReceipt = receiptData.is_receipt === true;
+
+    confidence = Number(receiptData.confidence);
+
+    /* * Accept 0-1 or 0-100 just in case the AI * unexpectedly returns a percentage. */
+    if (Number.isFinite(confidence) && confidence > 1) {
+      confidence = confidence / 100;
+    }
+
+    confidenceOkay = Number.isFinite(confidence) && confidence >= 0.5;
+
+    /* * Recipient number is checked only when the * receipt actually exposes a readable number. * Missing/masked number alone does not reject it. */
+    const extractedNumber = normalizePhone(receiptData.recipient_number);
+
+    const expectedNumber = normalizePhone(GCASH_NUMBER);
+
+    if (extractedNumber && expectedNumber && expectedNumber !== "09") {
+      recipientNumberValid =
+        extractedNumber.slice(-10) === expectedNumber.slice(-10);
+    }
+  }
+
+  const automaticVerificationPassed =
+    Boolean(receiptData) &&
+    isReceipt &&
+    confidenceOkay &&
+    sameAmount &&
+    receiptTimeValid &&
+    Boolean(ref) &&
+    !receiptData.duplicateReference &&
+    recipientNumberValid &&
+    !orderWindowExpired;
+
+  /* * Always save the uploaded receipt/reference, * including receipts that need admin review. * This allows duplicate-reference detection later. */
   order.receipt = {
     fileId: media.fileId,
     fileUniqueId: media.fileUniqueId,
     mediaType: media.type,
     reference: ref,
-    receivedAt: new Date().toISOString()
+    paymentMethod: receiptData?.payment_method || "",
+    recipient: receiptData?.recipient || "",
+    recipientNumber: receiptData?.recipient_number || "",
+    amount: receiptData?.amount ?? "",
+    datetime: receiptData?.datetime || "",
+    transactionStatus: receiptData?.status || "",
+    confidence: Number.isFinite(confidence) ? confidence : 0,
+    receivedAt: new Date().toISOString(),
+  };
+
+  /* * PASS = automatic payment approval. */
+  if (automaticVerificationPassed) {
+    order.status = "paid";
+    order.receiptStatus = "verified";
+    order.paymentVerifiedBy = "ai";
+    order.paymentVerifiedAt = new Date().toISOString();
+
+    saveDB(db);
+
+    delete pendingReceiptOrders[ctx.from.id];
+
+    await ctx.reply(
+      "✅ Payment verified automatically! Your order is now processing."
+    );
+
+    await confirmPayment(order);
+
+    return true;
   }
 
-  saveDB(db)
-  delete pendingReceiptOrders[ctx.from.id]
+  /* * FAIL / UNCERTAIN = manual verification. * Buyer is NOT automatically rejected. */
+  order.receiptStatus = "pending_verification";
 
-  await ctx.reply(
-    '✅ Payment verified automatically! Your order is now processing.'
-  )
+  saveDB(db);
 
-  await confirmPayment(order)
+  delete pendingReceiptOrders[ctx.from.id];
 
-  return true
-  }
+  await ctx.reply("⏳ Receipt received. Waiting for admin verification.");
+
   if (ADMIN_ID) {
-    const reasons = []
-   
-if (!sameName) reasons.push('❌ Wrong GCash name')
-if (!sameNumber) reasons.push('❌ Wrong GCash number')
-if (!sameAmount) reasons.push('❌ Wrong amount')
-if (receiptData?.duplicateReference) reasons.push('❌ Duplicate reference')
-if (!ref) reasons.push('❌ Missing reference')
+    const reasons = [];
 
-const adminCaption =
-`⚠️ Suspicious GCash receipt\n\n` +
-`Order: ${id}\n` +
-`Product: ${order.productName}\n` +
-`Total: ₱${order.totalPrice}\n\n` +
-`Reason:\n${reasons.join('\n')}\n\n` +
-`Buyer: @${order.username || 'no_username'} (${order.userId})`
+    if (aiError || !receiptData) {
+      reasons.push("⚠️ AI could not read the receipt");
+    } else {
+      if (!isReceipt) {
+        reasons.push("⚠️ AI is not confident this is a payment receipt");
+      }
+
+      if (!confidenceOkay) {
+        reasons.push(
+          `⚠️ Low AI confidence (${Math.round(confidence * 100) || 0}%)`
+        );
+      }
+
+      if (!sameAmount) {
+        reasons.push("⚠️ Amount needs checking");
+      }
+
+      if (!receiptTimeValid) {
+        reasons.push("⚠️ Receipt time is unreadable or outside 10 minutes");
+      }
+
+      if (orderWindowExpired) {
+        reasons.push("⚠️ Order payment window has passed");
+      }
+
+      if (receiptData.duplicateReference) {
+        reasons.push("⚠️ Reference number was already used");
+      }
+
+      if (!ref) {
+        reasons.push("⚠️ Reference number could not be read");
+      }
+
+      if (!recipientNumberValid) {
+        reasons.push("⚠️ Recipient number needs checking");
+      }
+    }
+
+    if (!reasons.length) {
+      reasons.push("⚠️ Automatic verification was inconclusive");
+    }
+
+    const adminCaption =
+      `🧾 FOR MANUAL VERIFICATION\n\n` +
+      `Order: ${id}\n` +
+      `Product: ${order.productName}\n` +
+      `Expected total: ₱${order.totalPrice}\n\n` +
+      `AI payment method: ${receiptData?.payment_method || "Unreadable"}\n` +
+      `AI amount: ${receiptData?.amount || "Unreadable"}\n` +
+      `AI date/time: ${ receiptData?.datetime || "Unreadable" } (UTC)\n``AI reference: ${ref || "Unreadable"}\n` +
+      `AI confidence: ${Math.round(confidence * 100) || 0}%\n\n` +
+      `Reason:\n${reasons.join("\n")}\n\n` +
+      `Buyer: @${order.username || "no_username"} (${order.userId})`;
+
+    /* * Manual fallback has Approve. * There is NO automatic rejection. */
     const keyboard = Markup.inlineKeyboard([
-  [
-    Markup.button.callback('✅ Approve', `approve_${id}`),
-    Markup.button.callback('❌ Reject', `reject_${id}`)
-  ]
-])
+      [Markup.button.callback("✅ Approve Payment", `approve_${id}`)],
+    ]);
 
-const sendReceipt = media.type === 'document'
-  ? bot.telegram.sendDocument(ADMIN_ID, media.fileId, {
-      caption: adminCaption,
-      ...keyboard
-    })
-  : bot.telegram.sendPhoto(ADMIN_ID, media.fileId, {
-      caption: adminCaption,
-      ...keyboard
-    })
-    await sendReceipt.catch(() => {})
+    const sendReceipt =
+      media.type === "document"
+        ? bot.telegram.sendDocument(ADMIN_ID, media.fileId, {
+            caption: adminCaption,
+            ...keyboard,
+          })
+        : bot.telegram.sendPhoto(ADMIN_ID, media.fileId, {
+            caption: adminCaption,
+            ...keyboard,
+          });
+
+    await sendReceipt.catch((error) => {
+      console.error("Failed to send receipt to admin:", error);
+    });
   }
-  return true
+
+  return true;
 }
-bot.action(/approve_(.+)/, async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('Unauthorized');
+
+bot.action(/^approve_(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery("Unauthorized");
+  }
 
   const id = ctx.match[1];
   const db = loadDB();
 
-  const order = db.orders.find(o => o.id === id);
-  if (!order) return ctx.answerCbQuery('Order not found');
+  const order = db.orders.find((o) => o.id === id);
 
-  order.status = 'paid';
+  if (!order) {
+    return ctx.answerCbQuery("Order not found");
+  }
+
+  /* * Prevent a second click from delivering * stock twice. */
+  if (
+    ["paid", "preparing", "waiting_gmail", "delivered"].includes(order.status)
+  ) {
+    return ctx.answerCbQuery("Order already processed");
+  }
+
+  order.status = "paid";
+  order.receiptStatus = "verified";
+  order.paymentVerifiedBy = "admin";
+  order.paymentVerifiedAt = new Date().toISOString();
+
   saveDB(db);
 
-  await ctx.answerCbQuery('Approved');
+  await ctx.answerCbQuery("Payment approved");
+
+  await ctx
+    .editMessageReplyMarkup({
+      inline_keyboard: [],
+    })
+    .catch(() => {});
 
   await ctx.reply(`✅ Order ${id} approved. Processing delivery...`);
 
   await confirmPayment(order);
 });
 
+bot.on("photo", async (ctx, next) => {
+  const photo = ctx.message.photo[ctx.message.photo.length - 1];
 
-bot.action(/reject_(.+)/, async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('Unauthorized');
-
-  const id = ctx.match[1];
-  const db = loadDB();
-
-  const order = db.orders.find(o => o.id === id);
-  if (!order) return ctx.answerCbQuery('Order not found');
-
-  order.status = 'rejected';
-  saveDB(db);
-
-  await ctx.answerCbQuery('Rejected');
-
-  await bot.telegram.sendMessage(
-    order.userId,
-    `❌ Your payment for Order ${id} was rejected. Please contact admin.`
-  );
-});
-bot.on('photo', async (ctx, next) => {
-  const photo = ctx.message.photo[ctx.message.photo.length - 1]
   const handled = await processReceiptMedia(ctx, {
-    type: 'photo',
+    type: "photo",
     fileId: photo.file_id,
-    fileUniqueId: photo.file_unique_id
-  })
-  if (!handled) return next()
-})
+    fileUniqueId: photo.file_unique_id,
+  });
 
-bot.on('document', async (ctx, next) => {
-  const document = ctx.message.document
+  if (!handled) return next();
+});
+
+bot.on("document", async (ctx, next) => {
+  const document = ctx.message.document;
+
   const handled = await processReceiptMedia(ctx, {
-    type: 'document',
+    type: "document",
     fileId: document.file_id,
     fileUniqueId: document.file_unique_id,
-    mimeType: document.mime_type || ''
-  })
-  if (!handled) return next()
-})
+    mimeType: document.mime_type || "",
+  });
 
-bot.action('my_orders', async (ctx) => {
-  await ctx.answerCbQuery()
-  const db = loadDB()
-  const orders = db.orders.filter(o => o.userId === ctx.from.id).slice(-10).reverse()
+  if (!handled) return next();
+});
+// ===============================
+// MY ORDERS
+// ===============================
 
-  if (!orders.length) return ctx.reply('📦 You have no orders yet.')
+bot.action("my_orders", async (ctx) => {
+  await ctx.answerCbQuery();
 
-  const lines = orders.map(o => {
-    const statusMap = {
-      waiting_payment: '⏳ Waiting for Payment',
-      paid: '💗 Payment Confirmed',
-      preparing: '🌸 Preparing — Manual Delivery',
-      waiting_gmail: '📧 Waiting for Gmail',
-      delivered: '✅ Delivered',
-      cancelled: '❌ Cancelled',
-      rejected: '🚫 Rejected'
-    }
-    const qty = o.quantity || 1
-    const priceEach = o.pricePerItem || o.price || 0
-    const total = o.totalPrice || priceEach * qty
-    const receiptNote = o.receiptStatus === 'pending_verification'
-      ? '\n📸 Receipt Pending Verification'
-      : ''
-    return `🧾 \`${o.id}\`\n${o.productName} — ${qty} x ₱${priceEach} = ₱${total}\n${statusMap[o.status] || o.status}${receiptNote}`
-  })
+  const db = loadDB();
 
-  await ctx.reply(`📦 *MY ORDERS*\n\n${lines.join('\n\n')}`, { parse_mode: 'Markdown' })
-})
+  const orders = db.orders
+    .filter((o) => o.userId === ctx.from.id)
+    .slice(-10)
+    .reverse();
 
-// Quantity confirmation handler — placed before the GMAIL handler
-bot.on('text', async (ctx, next) => {
-  const pending = pendingOrders[ctx.from.id]
-  if (!pending) return next() // not a quantity reply for a purchase
+  if (!orders.length) {
+    return ctx.reply("📦 You have no orders yet.");
+  }
 
-  const text = (ctx.message.text || '').trim()
-  const q = Number(text)
+  const statusMap = {
+    waiting_payment: "⏳ Waiting for Payment",
+    paid: "💗 Payment Confirmed",
+    preparing: "🌸 Preparing Delivery",
+    waiting_gmail: "📧 Waiting Gmail",
+    delivered: "✅ Delivered",
+    cancelled: "❌ Cancelled",
+  };
+
+  const lines = orders.map((o) => {
+    const qty = o.quantity || 1;
+    const price = o.pricePerItem || 0;
+    const total = o.totalPrice || price * qty;
+
+    const receipt =
+      o.receiptStatus === "pending_verification"
+        ? "\n📸 Receipt Pending Admin Review"
+        : "";
+
+    return (
+      `🧾 \`${o.id}\`\n` +
+      `${o.productName}\n` +
+      `${qty} x ₱${price} = ₱${total}\n` +
+      `${statusMap[o.status] || o.status}` +
+      receipt
+    );
+  });
+
+  await ctx.reply(`📦 *MY ORDERS*\n\n${lines.join("\n\n")}`, {
+    parse_mode: "Markdown",
+  });
+});
+
+// ===============================
+// QUANTITY ORDER HANDLER
+// ===============================
+
+bot.on("text", async (ctx, next) => {
+  // Ignore commands like /admin /addstock /menu
+  if (ctx.message.text?.startsWith("/")) {
+    return next();
+  }
+
+  const pending = pendingOrders[ctx.from.id];
+  if (!pending) return next();
+
+  const text = (ctx.message.text || "").trim();
+
+  const q = Number(text);
+
   if (!Number.isInteger(q) || q < 1 || q > 50) {
-    return ctx.reply('❌ Invalid quantity. Please enter a number between 1 and 50.')
+    return ctx.reply("❌ Invalid quantity. Enter 1-50.");
   }
 
-  // create the order now
-  const productId = pending.productId
-  const product = PRODUCTS[productId]
+  const product = PRODUCTS[pending.productId];
+
   if (!product) {
-    delete pendingOrders[ctx.from.id]
-    return ctx.reply('Product not found.')
+    delete pendingOrders[ctx.from.id];
+    return ctx.reply("Product not found.");
   }
 
-    const db = loadDB()
-  
-// Check stock availability before creating order
-if (product.deliveryType === 'link' || product.deliveryType === 'email_password') {
-  const availableStock = db.stock.filter(
-    s => s.productId === productId
-  ).length
+  const db = loadDB();
 
-  if (q > availableStock) {
-    return ctx.reply(
-      `❌ Not enough stock.\n\nAvailable: ${availableStock}\nRequested: ${q}`
-    )
+  // Check stock for instant delivery items
+  if (
+    product.deliveryType === "link" ||
+    product.deliveryType === "email_password"
+  ) {
+    const available = db.stock.filter((s) => s.productId === product.id).length;
+
+    if (q > available) {
+      return ctx.reply(
+        `❌ Not enough stock.\n\nAvailable: ${available}\nRequested: ${q}`
+      );
+    }
   }
-}
 
   const order = {
     id: orderId(),
+
     userId: ctx.from.id,
-    username: ctx.from.username || '',
-    productId,
+
+    username: ctx.from.username || "",
+
+    productId: product.id,
+
     productName: product.name,
+
     quantity: q,
+
     pricePerItem: product.price,
-    totalPrice: product.price * q, // dynamic total price
-    status: 'waiting_payment',
+
+    totalPrice: product.price * q,
+
+    status: "waiting_payment",
+
     createdAt: new Date().toISOString(),
-    paymentExpiresAt: Date.now() + 
-      (10 * 60 * 1000),
+
+    paymentExpiresAt: Date.now() + 10 * 60 * 1000,
+
     gmail: null,
-    deliveredAt: null,
-    deliveredItems: [] // will hold delivered stock items (unified format)
+
+    deliveredItems: [],
+  };
+
+  db.orders.push(order);
+
+  if (!db.users) {
+    db.users = [];
   }
-  db.orders.push(order)
-  if (!db.users) db.users = []
 
-const buyer = db.users.find(u => u.id === ctx.from.id)
+  const exists = db.users.find((u) => u.id === ctx.from.id);
 
-if (!buyer) {
-  db.users.push({
-    id: ctx.from.id,
-    username: ctx.from.username || '',
-    createdAt: new Date().toISOString()
-  })
-}
+  if (!exists) {
+    db.users.push({
+      id: ctx.from.id,
 
-  saveDB(db)
+      username: ctx.from.username || "",
 
-  delete pendingOrders[ctx.from.id]
-
-  const msg =
-    `🎀 *ORDER CREATED!*\n\n` +
-    `${product.emoji} Product: *${product.name}*\n` +
-    `🔢 Quantity: *${order.quantity}*\n` +
-    `💸 Price: *₱${order.pricePerItem} each*\n` +
-    `💰 Total: *₱${order.totalPrice}*\n` +
-    `🧾 Order ID: \`${order.id}\`\n` +
-    `⏰ Status: *Waiting for Payment*\n\n` +
-    `💗 Please complete your payment to continue.`
-
-  await ctx.reply(msg, {
-    parse_mode: 'Markdown',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('💳 Payment Guide', 'payment_guide')],
-      [Markup.button.callback('❌ Cancel Order', `cancel:${order.id}`)]
-    ])
-  })
-
-  if (ADMIN_ID) {
-    await bot.telegram.sendMessage(
-      ADMIN_ID,
-      `🛎 New order\n\nOrder: ${order.id}\nProduct: ${product.name}\nQty: ${order.quantity}\nTotal: ₱${order.totalPrice}\nBuyer: @${order.username || 'no_username'} (${order.userId})`
-    ).catch(() => {})
+      createdAt: new Date().toISOString(),
+    });
   }
-})
 
-// UNIFIED GMAIL handler (removed duplicate)
-bot.hears(/^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i, async (ctx) => {
-  const [, id, gmail] = ctx.match
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
+  saveDB(db);
 
-  if (!order) return ctx.reply('Order not found.')
-  if (order.productId !== 'canva') return ctx.reply('This order does not require a Gmail address.')
-  if (order.status !== 'waiting_gmail') return ctx.reply('This order is not wwaiting for Gmail.')
-
-  order.gmail = gmail
-  order.status = 'preparing'
-  saveDB(db)
+  delete pendingOrders[ctx.from.id];
 
   await ctx.reply(
-    `📧 Gmail received! 💗\n\nOrder: \`${id}\`\nGmail: \`${gmail}\`\n\n🌸 Your Canva invite is now being prepared.`,
-    { parse_mode: 'Markdown' }
-  )
+    `🎀 *ORDER CREATED!*\n\n` +
+      `${product.emoji} Product: *${product.name}*\n` +
+      `🔢 Quantity: *${q}*\n` +
+      `💸 Price: *₱${product.price} each*\n` +
+      `💰 Total: *₱${order.totalPrice}*\n\n` +
+      `🧾 Order ID: \`${order.id}\`\n\n` +
+      `⏳ Waiting for Payment`,
+
+    {
+      parse_mode: "Markdown",
+
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("💳 Payment Guide", "payment_guide")],
+
+        [Markup.button.callback("❌ Cancel Order", `cancel:${order.id}`)],
+      ]),
+    }
+  );
 
   if (ADMIN_ID) {
-    await bot.telegram.sendMessage(
-      ADMIN_ID,
-      `🧁 Canva Gmail received\nOrder: ${id}\nGmail: ${gmail}`
-    ).catch(() => {})
+    await bot.telegram
+      .sendMessage(
+        ADMIN_ID,
+
+        `🛎 New Order\n\n` +
+          `Order: ${order.id}\n` +
+          `Product: ${product.name}\n` +
+          `Qty: ${q}\n` +
+          `Total: ₱${order.totalPrice}\n` +
+          `Buyer: @${order.username || "no_username"} (${order.userId})`
+      )
+      .catch(() => {});
   }
-})
+});
 
-bot.action(/^received:(HYU-.+)$/, async (ctx) => {
-  await ctx.answerCbQuery('Thank you! 💗')
-  await ctx.reply('🌸 Thank you for confirming. Enjoy your order! 💕')
-})
+// ===============================
+// GMAIL HANDLER (CANVA)
+// ===============================
 
-bot.action(/^show_items:(HYU-.+)$/, async (ctx) => {
-  await ctx.answerCbQuery()
-  const id = ctx.match[1]
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id && o.userId === ctx.from.id)
-  if (!order || !order.deliveredItems || !order.deliveredItems.length) return ctx.reply('Items not available.')
+bot.hears(
+  /^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i,
 
-  const items = order.deliveredItems
-  let text = `📦 Delivered items for \`${order.id}\`:\n\n`
-  if (items[0].type === 'link') {
-    items.forEach((it, idx) => {
-      text += `#${idx + 1}: ${it.link}\n`
-    })
-  } else if (items[0].type === 'email_password') {
-    items.forEach((it, idx) => {
-      text += `#${idx + 1} • 📧 ${it.email}\n    🔐 ${it.password}\n\n`
-    })
-  } else {
-    items.forEach((it, idx) => {
-      text += `#${idx + 1} • ${JSON.stringify(it)}\n`
-    })
+  async (ctx) => {
+    const [, id, gmail] = ctx.match;
+
+    const db = loadDB();
+
+    const order = db.orders.find(
+      (o) => o.id === id && o.userId === ctx.from.id
+    );
+
+    if (!order) {
+      return ctx.reply("Order not found.");
+    }
+
+    if (order.productId !== "canva") {
+      return ctx.reply("This order does not require Gmail.");
+    }
+
+    if (order.status !== "waiting_gmail") {
+      return ctx.reply("This order is not waiting for Gmail.");
+    }
+
+    order.gmail = gmail;
+
+    order.status = "preparing";
+
+    saveDB(db);
+
+    await ctx.reply(
+      `📧 Gmail received!\n\n` +
+        `Order: \`${id}\`\n` +
+        `Gmail: \`${gmail}\`\n\n` +
+        `🌸 Preparing your Canva invite.`,
+
+      {
+        parse_mode: "Markdown",
+      }
+    );
+
+    if (ADMIN_ID) {
+      await bot.telegram
+        .sendMessage(
+          ADMIN_ID,
+
+          `🧁 Canva Gmail Received\n\n` + `Order: ${id}\n` + `Gmail: ${gmail}`
+        )
+        .catch(() => {});
+    }
+  }
+);
+
+// ===============================
+// RECEIVED BUTTON
+// ===============================
+
+bot.action(
+  /^received:(HYU-.+)$/,
+
+  async (ctx) => {
+    await ctx.answerCbQuery("Thank you! 💗");
+
+    await ctx.reply("🌸 Thank you for confirming. Enjoy your order! 💕");
+  }
+);
+// ===============================
+// ADMIN STOCK COMMANDS
+// ===============================
+bot.command("admin", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.reply("❌ Unauthorized");
   }
 
-  await ctx.reply(text, { parse_mode: 'Markdown' })
-})
+  await ctx.reply(
+    `👑 ADMIN PANEL\n\n` +
+      `/stock - View stock\n` +
+      `/addlink - Add link stock\n` +
+      `/addaccount - Add email/password stock`
+  );
+});
+bot.command("stock", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return;
+  }
+
+  const db = loadDB();
+
+  const counts = {};
+
+  for (const item of db.stock) {
+    counts[item.productId] = (counts[item.productId] || 0) + 1;
+  }
+
+  let text = "📦 STOCK LIST\n\n";
+
+  for (const p of Object.values(PRODUCTS)) {
+    text += `${p.emoji} ${p.name}: ${counts[p.id] || 0}\n`;
+  }
+
+  await ctx.reply(text);
+});
+
+// Add link stock
+bot.command("addlink", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.reply("❌ Unauthorized");
+  }
+
+  delete pendingOrders[ctx.from.id];
+
+  adminStockFlow[ctx.from.id] = {
+    type: "gemini_links",
+  };
+
+  await ctx.reply(
+    "🌷 Send Gemini links now.\n\n" +
+      "One link per line.\n" +
+      "You can add up to 50 links at once."
+  );
+});
+
+// Add email/password stock
+bot.command("addaccount", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.reply("❌ Unauthorized");
+  }
+
+  adminStockFlow[ctx.from.id] = {
+    type: "email_password",
+  };
+
+  await ctx.reply(
+    "Send product id email password:\n\nExample:\ncapcut test@gmail.com pass123"
+  );
+});
+// Admin stock input
+bot.on("text", async (ctx, next) => {
+  const flow = adminStockFlow[ctx.from.id];
+
+  if (!flow) {
+    return next();
+  }
+
+  if (!isAdmin(ctx)) {
+    return next();
+  }
+
+  // GEMINI LINK STOCK
+  if (flow.type === "gemini_links") {
+    const links = ctx.message.text
+      .split("\n")
+      .map((x) => x.trim())
+      .filter((x) => x.startsWith("http://") || x.startsWith("https://"))
+      .slice(0, 50);
+
+    if (!links.length) {
+      return ctx.reply("❌ Send links only.");
+    }
+
+    const db = loadDB();
+
+    for (const link of links) {
+      db.stock.push({
+        productId: "gemini",
+        type: "link",
+        link,
+        addedAt: new Date().toISOString(),
+      });
+    }
+
+    saveDB(db);
+
+    delete adminStockFlow[ctx.from.id];
+
+    return ctx.reply(`✅ Added ${links.length} Gemini links.`);
+  }
+
+  return next();
+});
+
+// ===============================
+// DELIVERY FUNCTION
+// ===============================
 
 async function confirmPayment(order) {
-  const db = loadDB()
-  const live = db.orders.find(o => o.id === order.id)
-  if (!live) return
+  const db = loadDB();
 
-  const product = PRODUCTS[live.productId]
-  if (!product) return
+  const fresh = db.orders.find((o) => o.id === order.id);
 
-  // Manual (admin will handle)
-  if (product.deliveryType === 'manual') {
-    live.status = 'preparing'
-    saveDB(db)
-    await bot.telegram.sendMessage(
-      live.userId,
-      `💗 *PAYMENT CONFIRMED!*\n\n` +
-      `💕 Your *${product.name}* order is now being prepared.\n\n` +
-      `🧾 Order: \`${live.id}\`\n` +
-      `💸 Paid: *₱${live.totalPrice}*\n` +
-      `📦 Status: *Preparing Account*\n\n` +
-      `⏰ This product is manually delivered.\n` +
-      `Please allow up to *12 hours* for your account details to arrive here.\n\n` +
-      `🌷 No need to place another order while waiting. Thank you! 💕`,
-      { parse_mode: 'Markdown' }
-    )
-    return
+  if (!fresh) {
+    return;
   }
 
-  // Manual invite (Canva)
-  if (product.deliveryType === 'manual_invite') {
-    live.status = 'waiting_gmail'
-    saveDB(db)
-    await bot.telegram.sendMessage(
-      live.userId,
-      `💗 *PAYMENT CONFIRMED!*\n\n` +
-      `🧁 ${product.name} — \`${live.id}\`\n\n` +
-      `📧 Please send the Gmail address you want us to invite.\n` +
-      `Send it in this format:\n\n` +
-      `\`GMAIL ${live.id} yourname@gmail.com\``,
-      { parse_mode: 'Markdown' }
-    )
-    return
+  const product = PRODUCTS[fresh.productId];
+
+  if (!product) {
+    return;
   }
 
-  // For stock-based products (link or email_password)
-  const needed = live.quantity || 1
-  // Find matching stock items for this product
-  const available = db.stock.filter(s => s.productId === live.productId)
-  if (available.length < needed) {
-    live.status = 'preparing'
-    saveDB(db)
+  // Manual products
+
+  if (product.deliveryType === "manual") {
+    fresh.status = "preparing";
+
+    saveDB(db);
+
     await bot.telegram.sendMessage(
-      live.userId,
-      `💗 Payment confirmed for \`${live.id}\`.\n\n🌸 Your ${product.name} is being prepared. We will deliver it here as soon as stock is ready.`,
-      { parse_mode: 'Markdown' }
-    )
-    return
+      fresh.userId,
+
+      `💗 Payment confirmed!\n\n` +
+        `Order: ${fresh.id}\n\n` +
+        `🌸 Your order is being prepared manually.`
+    );
+
+    return;
   }
 
-  // Reserve (remove) the first 'needed' matching stock items
-  const toDeliver = []
-  let removed = 0
-  const remainingStock = []
-  for (const s of db.stock) {
-    if (removed < needed && s.productId === live.productId) {
-      toDeliver.push(s)
-      removed++
-    } else {
-      remainingStock.push(s)
+  // Canva
+
+  if (product.deliveryType === "manual_invite") {
+    fresh.status = "waiting_gmail";
+
+    saveDB(db);
+
+    await bot.telegram.sendMessage(
+      fresh.userId,
+
+      `🧁 Payment confirmed!\n\n` +
+        `Order: ${fresh.id}\n\n` +
+        `Please send your Gmail:\n\n` +
+        `GMAIL ${fresh.id} your@gmail.com`
+    );
+
+    return;
+  }
+
+  // Stock delivery
+
+  const available = db.stock.filter((s) => s.productId === fresh.productId);
+
+  const items = available.slice(0, fresh.quantity);
+
+  if (items.length < fresh.quantity) {
+    fresh.status = "preparing";
+
+    saveDB(db);
+
+    await bot.telegram.sendMessage(
+      fresh.userId,
+
+      `✅ Payment confirmed.\n\n` + `⏳ Preparing delivery.`
+    );
+
+    return;
+  }
+
+  fresh.deliveredItems = items;
+
+  db.stock = db.stock.filter((s) => !items.includes(s));
+
+  fresh.status = "delivered";
+
+  fresh.deliveredAt = new Date().toISOString();
+
+  saveDB(db);
+
+  let delivery = `🎉 PAYMENT CONFIRMED!\n\n` + `🧾 Order: ${fresh.id}\n\n`;
+
+  for (const item of items) {
+    if (item.type === "link") {
+      delivery += `🔗 Link:\n${item.link}\n\n`;
+    }
+
+    if (item.type === "email_password") {
+      delivery +=
+        `📧 Email: ${item.email}\n` + `🔑 Password: ${item.password}\n\n`;
     }
   }
-  // deliver first
-  console.log("ORDER PRODUCT:", live.productId)
-console.log("STOCK:", db.stock)
-console.log("TO DELIVER:", toDeliver)
-  
-await deliverCredentials(live, toDeliver)
-
-// remove stock after successful delivery
-db.stock = remainingStock
-live.status = 'delivered'
-live.deliveredItems = toDeliver
-saveDB(db)
-}
-
-async function deliverCredentials(order, items) {
-  // items: array of unified stock items (can contain link or email/password)
-  if (!Array.isArray(items)) items = [items]
-
-  const product = PRODUCTS[order.productId]
-
-  let body = `💕 *YOUR ${product.name.toUpperCase()} ORDER IS READY!* 💕\n\n` +
-    `🧾 Order: \`${order.id}\`\n` +
-    `📦 Product: *${product.name}*\n` +
-    `✅ Status: *Delivered*\n\n`
-
-  if (items.length === 0) {
-    body += '✅ Delivery completed.\n'
-  } else {
-    if (items[0].type === 'link') {
-      body += '*LINKS*\n'
-      items.forEach((it, idx) => {
-        body += `#${idx + 1}: ${it.link}\n`
-      })
-      body += '\n'
-    } else if (items[0].type === 'email_password') {
-      body += '*ACCOUNTS*\n'
-      items.forEach((it, idx) => {
-        body += `#${idx + 1} • 📧 ${it.email}\n    🔐 ${it.password}\n`
-      })
-      body += '\n'
-    } else {
-      // generic print
-      items.forEach((it, idx) => {
-        body += `#${idx + 1}: ${JSON.stringify(it)}\n`
-      })
-      body += '\n'
-    }
-  }
-
-  body += `💗 Please save your login details.\n` +
-    `🌸 Thank you for ordering from Hyuna Store!`
-
-  // Provide simple buttons: show_items and received
-  await bot.telegram.sendMessage(
-    order.userId,
-    body,
-    {
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('📦 Show Items', `show_items:${order.id}`)],
-        [Markup.button.callback('✅ Mark as Received', `received:${order.id}`)]
-      ])
-    }
-  )
-}
-
-// ADMIN: confirm payment
-bot.command('paid', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
-  const id = ctx.message.text.split(/\s+/)[1]
-  if (!id) return ctx.reply('Usage: /paid HYU-XXXX')
-
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id)
-  if (!order) return ctx.reply('Order not found.')
-  if (!['waiting_payment', 'preparing'].includes(order.status)) {
-    return ctx.reply(`Current status: ${order.status}`)
-  }
-
-  order.status = 'paid'
-  saveDB(db)
-  await ctx.reply(`✅ Payment confirmed for ${id}`)
-  await confirmPayment(order)
-})
-
-// ADMIN: deliver manual account
-// Usage:
-// /deliver HYU-XXXX email@example.com password123
-bot.command('deliver', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
-  const parts = ctx.message.text.split(/\s+/)
-  const [, id, email, ...passParts] = parts
-  const password = passParts.join(' ')
-
-  if (!id || !email || !password) {
-    return ctx.reply('Usage: /deliver HYU-XXXX email@example.com password')
-  }
-
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id)
-  if (!order) return ctx.reply('Order not found.')
-
-  order.status = 'delivered'
-  order.deliveredAt = new Date().toISOString()
-  order.deliveredItems = [{
-    productId: order.productId,
-    type: 'email_password',
-    email,
-    password,
-    addedAt: new Date().toISOString()
-  }]
-  saveDB(db)
-
-  await deliverCredentials(order, order.deliveredItems)
-  await ctx.reply(`✅ Delivered ${id}`)
-})
-
-// ADMIN: mark Canva invite delivered
-bot.command('canva_done', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
-  const id = ctx.message.text.split(/\s+/)[1]
-  if (!id) return ctx.reply('Usage: /canva_done HYU-XXXX')
-
-  const db = loadDB()
-  const order = db.orders.find(o => o.id === id)
-  if (!order) return ctx.reply('Order not found.')
-
-  order.status = 'delivered'
-  order.deliveredAt = new Date().toISOString()
-  saveDB(db)
 
   await bot.telegram.sendMessage(
-    order.userId,
-    `🧁💗 *CANVA PRO DELIVERED!*\n\n` +
-    `🧾 Order: \`${order.id}\`\n` +
-    `📧 Gmail: \`${order.gmail || 'submitted'}\`\n` +
-    `✅ Status: *Invite Sent / Delivered*\n\n` +
-    `🌸 Please check your Gmail and Canva account. Thank you!`,
-    { parse_mode: 'Markdown' }
-  )
+    fresh.userId,
 
-  await ctx.reply(`✅ Canva marked delivered: ${id}`)
-})
-
-// ADMIN: view recent orders with detailed summary
-bot.command('orders', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
-  const db = loadDB()
-  const recent = db.orders.slice(-20).reverse()
-  if (!recent.length) return ctx.reply('No orders yet.')
-
-  const text = recent.map(o => {
-    const statusEmoji = {
-      'waiting_payment': '⏳',
-      'paid': '💗',
-      'preparing': '🌸',
-      'waiting_gmail': '📧',
-      'delivered': '✅',
-      'cancelled': '❌',
-      'rejected': '🚫'
-    }
-    return `${statusEmoji[o.status] || '•'} ${o.id} | ${o.productName} | qty:${o.quantity || 1} | ₱${o.totalPrice || (o.pricePerItem || 0)} | ${o.status} | ${o.userId}`
-  }).join('\n')
-
-  await ctx.reply(`📦 *Recent Orders (Last 20)*\n\n${text}`, { parse_mode: 'Markdown' })
-})
-
-// ADMIN: view stock levels
-bot.command('stock', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
-  const db = loadDB()
-  if (!db.stock || !db.stock.length) return ctx.reply('No stock available.')
-
-  const stockByProduct = {}
-  for (const s of db.stock) {
-    if (!stockByProduct[s.productId]) {
-      stockByProduct[s.productId] = []
-    }
-    stockByProduct[s.productId].push(s)
-  }
-
-  let text = '📦 *STOCK LEVELS*\n\n'
-  for (const [pid, items] of Object.entries(stockByProduct)) {
-    const product = PRODUCTS[pid]
-    text += `${product?.emoji || '•'} *${product?.name || pid}*: ${items.length} item(s)\n`
-  }
-
-  await ctx.reply(text, { parse_mode: 'Markdown' })
-})
-
-// ADMIN: add stock with button menu flow
-bot.command('addstock', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
-
-  await ctx.reply('📦 *Select a product to add stock:*', {
-    parse_mode: 'Markdown',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('🌷 Gemini', 'addstock:gemini')],
-      [Markup.button.callback('🎀 CapCut', 'addstock:capcut')],
-      [Markup.button.callback('💕 ChatGPT', 'addstock:chatgpt')],
-      [Markup.button.callback('🧁 Canva', 'addstock:canva')]
-    ])
-  })
-})
-
-// Handle product selection for adding stock
-bot.action(/^addstock:(.+)$/, async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('❌ Unauthorized', true)
-  
-  await ctx.answerCbQuery()
-  const productId = ctx.match[1]
-  const product = PRODUCTS[productId]
-  
-  if (!product) return ctx.reply('Product not found.')
-
-  // Initialize admin stock flow
-  adminStockFlow[ctx.from.id] = {
-    productId,
-    deliveryType: product.deliveryType,
-    items: []
-  }
-
-  if (product.deliveryType === 'link') {
-    await ctx.reply(
-      `🌷 *Adding stock for ${product.name}*\n\n` +
-      `Send stock links. You can send multiple links (one per line or each in a separate message).\n\n` +
-      `Formats accepted:\n` +
-      `• Plain links:\n  https://link1.com\n  https://link2.com\n\n` +
-      `• Numbered format:\n  Link 1: https://link1.com\n  Link 2: https://link2.com`,
-      { parse_mode: 'Markdown' }
-    )
-  } else if (product.deliveryType === 'email_password') {
-    await ctx.reply(
-      `🎀 *Adding stock for ${product.name}*\n\n` +
-      `Send accounts in format: \`email|password\`\n\n` +
-      `You can send multiple accounts (one per line or each in a separate message).`,
-      { parse_mode: 'Markdown' }
-    )
-  } else {
-    await ctx.reply(
-      `📦 *Adding stock for ${product.name}*\n\n` +
-      `Send the required stock information for this product.`,
-      { parse_mode: 'Markdown' }
-    )
-  }
-})
-
-// Extract every Gemini activation URL from the complete message. Copy/paste
-// sometimes adds zero-width characters inside a URL, so remove them first.
-function parseGeminiActivationLinks(text) {
-  const cleaned = String(text || '')
-    .replace(/[\u007F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180D\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFE00-\uFE0F\uFEFF]/g, '')
-
-  const matches = cleaned.match(
-    /https?:\/\/serviceactivation\.google\.com\/subscription\/new\/[^\s<>"'`]+/gi
-  ) || []
-
-  // Punctuation is commonly pasted immediately after a URL in a numbered
-  // list. It is not part of the activation link.
-  return matches.map(link => link.replace(/[),.;!?]+$/g, ''))
+    delivery
+  );
 }
 
-// Keep the existing parser available for any future non-Gemini link products.
-function parseBulkLinks(text) {
-  const links = []
-  for (const line of String(text || '').split('\n').filter(l => l.trim())) {
-    const trimmed = line.replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
-    const match = trimmed.match(/^[Ll]ink\s+\d+:\s*(https?:\/\/.+)$/i)
-    if (match) {
-      links.push(match[1].trim())
-    } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      links.push(trimmed)
-    }
-  }
-  return links
-}
-
-// Handle admin stock submission
-bot.on('text', async (ctx, next) => {
-  const flow = adminStockFlow[ctx.from.id]
-  if (!flow || !isAdmin(ctx)) return next()
-
-  const text = (ctx.message.text || '').trim()
-  if (!text) return next()
-
-  // Check if this is a command (skip admin stock flow if it's a command)
-  if (text.startsWith('/')) {
-    delete adminStockFlow[ctx.from.id]
-    return next()
-  }
-
-  const productId = flow.productId
-  const product = PRODUCTS[productId]
-  const db = loadDB()
-  db.stock = db.stock || []
-
-  let addedCount = 0
-  let duplicateCount = 0
-
-  // Parse input based on delivery type
-  if (product.deliveryType === 'link') {
-    // Gemini links are extracted from the entire message, regardless of
-    // labels, numbering, line breaks, spaces, or blank lines.
-    const links = productId === 'gemini'
-      ? parseGeminiActivationLinks(text)
-      : parseBulkLinks(text)
-    const existingGeminiLinks = new Set(
-      db.stock
-        .filter(stock => stock.productId === 'gemini' && stock.type === 'link')
-        .map(stock => stock.link)
-    )
-    const seenInMessage = new Set()
-    
-    for (const link of links) {
-      if (productId === 'gemini' && (existingGeminiLinks.has(link) || seenInMessage.has(link))) {
-        duplicateCount++
-        continue
-      }
-
-      db.stock.push({
-        productId,
-        type: 'link',
-        link,
-        addedAt: new Date().toISOString()
-      })
-      flow.items.push(link)
-      addedCount++
-      if (productId === 'gemini') {
-        seenInMessage.add(link)
-        existingGeminiLinks.add(link)
-      }
-    }
-    
-    if (addedCount === 0) {
-      if (productId === 'gemini' && duplicateCount > 0) {
-        const totalForPid = db.stock.filter(s => s.productId === productId).length
-        delete adminStockFlow[ctx.from.id]
-        return ctx.reply(
-          `♻️ Skipped ${duplicateCount} duplicate link${duplicateCount === 1 ? '' : 's'}\n\n` +
-          `📦 Total ${product.name} stock: ${totalForPid}`
-        )
-      }
-      return ctx.reply(
-        productId === 'gemini'
-          ? '❌ No valid Gemini activation links found. Please send serviceactivation.google.com/subscription/new/ links.'
-          : '❌ No valid links found. Please send links starting with http:// or https://'
-      )
-    }
-  } else if (product.deliveryType === 'email_password') {
-    // Accept email|password format
-    const lines = text.split('\n').filter(l => l.trim())
-    for (const line of lines) {
-      const [email, password] = line.split('|').map(s => s.trim())
-      if (email && password && email.includes('@')) {
-        db.stock.push({
-          productId,
-          type: 'email_password',
-          email,
-          password,
-          addedAt: new Date().toISOString()
-        })
-        flow.items.push(`${email}|${password}`)
-        addedCount++
-      }
-    }
-    if (addedCount === 0) {
-      return ctx.reply('❌ Invalid format. Use: email@example.com|password')
-    }
-  } else {
-    // For manual products, just store as is
-    db.stock.push({
-      productId,
-      type: 'generic',
-      value: text,
-      addedAt: new Date().toISOString()
-    })
-    flow.items.push(text)
-    addedCount = 1
-  }
-
-  saveDB(db)
-
-// Notify buyers/members about new stock
-try {
-  const stockCount = db.stock.filter(s => s.productId === productId).length
-
-  const notifyText =
-    `📢 New Stock Added!\n\n` +
-    `✨ Product: ${product.name}\n` +
-    `📦 Available Stock: ${stockCount}\n\n` +
-    `🛒 Available now. Thank you!`
-  if (db.users && db.users.length > 0) {
-  for (const buyer of db.users) {
-    await bot.telegram.sendMessage(
-      buyer.id,
-      notifyText
-    ).catch(() => {})
-  }
-  }
-
-  // dito ilalagay natin ang listahan ng users/members na i-no-notify
-
-} catch (e) {
-  console.log('Stock notify error:', e.message)
-}
-
-// Confirm save
-  const totalForPid = db.stock.filter(s => s.productId === productId).length
-  const duplicateSummary = productId === 'gemini' && duplicateCount > 0
-    ? `\n♻️ Skipped ${duplicateCount} duplicate link${duplicateCount === 1 ? '' : 's'}`
-    : ''
-  await ctx.reply(
-    `✅ Added ${addedCount} ${product.name} stock${duplicateSummary}\n\n📦 Total ${product.name} stock: ${totalForPid}`,
-    { parse_mode: 'Markdown' }
-  )
-
-  // Clear flow
-  delete adminStockFlow[ctx.from.id]
-})
-
-// ADMIN: delete stock - product selection
-bot.command('delstock', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.reply('❌ Unauthorized')
-
-  await ctx.reply('📦 *Select a product to manage stock:*', {
-    parse_mode: 'Markdown',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('🌷 Gemini', 'delstock:gemini')],
-      [Markup.button.callback('🎀 CapCut', 'delstock:capcut')],
-      [Markup.button.callback('💕 ChatGPT', 'delstock:chatgpt')],
-      [Markup.button.callback('🧁 Canva', 'delstock:canva')]
-    ])
-  })
-})
-
-// Handle product selection for deleting stock - show options
-bot.action(/^delstock:(.+)$/, async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('❌ Unauthorized', true)
-  
-  await ctx.answerCbQuery()
-  const productId = ctx.match[1]
-  const product = PRODUCTS[productId]
-  
-  if (!product) return ctx.reply('Product not found.')
-
-  const db = loadDB()
-  const productStocks = db.stock.filter(s => s.productId === productId)
-  
-  if (!productStocks.length) return ctx.reply(`📦 No stock available for ${product.name}.`)
-
-  // Show options: Delete one or Delete all
-  await ctx.reply(
-    `📦 *${product.name}* - ${productStocks.length} stock item(s)\n\nWhat would you like to do?`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('🗑️ Delete One', `delstockone:${productId}`)],
-        [Markup.button.callback('🗑️🗑️ Delete All', `delstockall:${productId}`)]
-      ])
-    }
-  )
-})
-
-// Handle delete one stock
-bot.action(/^delstockone:(.+)$/, async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('❌ Unauthorized', true)
-  
-  await ctx.answerCbQuery()
-  const productId = ctx.match[1]
-  const product = PRODUCTS[productId]
-  
-  if (!product) return ctx.reply('Product not found.')
-
-  const db = loadDB()
-  const productStocks = db.stock.filter(s => s.productId === productId)
-  
-  if (!productStocks.length) return ctx.reply(`📦 No stock available for ${product.name}.`)
-
-  // Show stocks numbered
-  let text = `📦 *${product.name} Stock (${productStocks.length} items)*\n\n`
-  productStocks.forEach((stock, idx) => {
-    if (stock.type === 'link') {
-      text += `Stock ${idx + 1}\n${stock.link}\n\n`
-    } else if (stock.type === 'email_password') {
-      text += `Stock ${idx + 1}\n📧 ${stock.email}\n🔐 ${stock.password}\n\n`
-    } else {
-      text += `Stock ${idx + 1}\n${JSON.stringify(stock)}\n\n`
-    }
-  })
-  
-  text += `Reply with the stock number to delete (1-${productStocks.length})`
-
-  adminDelStockFlow[ctx.from.id] = {
-    action: 'deleteone',
-    productId,
-    productStocks,
-    product
-  }
-
-  await ctx.reply(text, { parse_mode: 'Markdown' })
-})
-
-// Handle delete all stock for product
-bot.action(/^delstockall:(.+)$/, async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('❌ Unauthorized', true)
-  
-  await ctx.answerCbQuery()
-  const productId = ctx.match[1]
-  const product = PRODUCTS[productId]
-  
-  if (!product) return ctx.reply('Product not found.')
-
-  const db = loadDB()
-  const count = db.stock.filter(s => s.productId === productId).length
-
-  if (!count) return ctx.reply(`📦 No stock available for ${product.name}.`)
-
-  await ctx.reply(
-    `⚠️ *Confirm deletion*\n\nDelete ALL ${count} stock item(s) from all products`,
-      { parse_mode: 'Markdown' }
-    )
-    delete adminDelStockFlow[ctx.from.id]
-  }
-})
+// ===============================
+// START BOT
+// ===============================
 
 bot.catch((err) => {
-  console.error('Bot error:', err)
-})
-bot.telegram.setMyCommands([
-  { command: 'start', description: '🏠 Open Menu' },
-  { command: 'menu', description: '🛍 Show Products Menu' }
-])
-bot.launch()
-console.log('🌸 Hyuna Store bot is running...')
-console.log(`ADMIN_ID configured: ${ADMIN_ID}`)
+  console.error("BOT ERROR:", err);
+});
 
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
+bot.launch();
+
+console.log("🌸 Hyuna Store Bot Started");
+
+process.once("SIGINT", () => bot.stop("SIGINT"));
+
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
