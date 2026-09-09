@@ -416,6 +416,8 @@ if (usedReference) {
     '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
   )
 }
+
+order.receipt = {
   order.receipt = {
   fileId: media.fileId,
   fileUniqueId: media.fileUniqueId,
