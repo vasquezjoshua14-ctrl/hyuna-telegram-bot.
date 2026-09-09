@@ -557,13 +557,13 @@ async function processReceiptMedia(ctx, media) {
     )
 
     usedReference = ref
-      ? db.orders.find(o =>
-          o.id !== order.id &&
-          normalizeReference(
-            o.receipt?.reference
-          ) === ref
-        )if
-      : null
+  ? db.orders.find(o =>
+      o.id !== order.id &&
+      normalizeReference(
+        o.receipt?.reference
+      ) === ref
+    )
+  : null
 
     receiptData.duplicateReference =
       Boolean(usedReference)
