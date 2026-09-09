@@ -333,7 +333,7 @@ bot.action('home', async (ctx) => {
 
 bot.action(/^buy:(.+)$/, async (ctx) => {
   await ctx.answerCbQuery()
-
+ 
   const productId = ctx.match[1]
   const product = PRODUCTS[productId]
 
@@ -668,7 +668,7 @@ async function processReceiptMedia(ctx, media) {
     order.status = 'paid'
     order.receiptStatus = 'verified'
     order.paymentVerifiedBy = 'ai'
-    order.paymentVerifiedAt =
+        order.paymentVerifiedAt =
       new Date().toISOString()
 
     saveDB(db)
@@ -1003,7 +1003,7 @@ bot.on('text', async (ctx, next) => {
     const available =
       db.stock.filter(
         s =>
-          s.productId === product.id
+                   s.productId === product.id
       ).length
 
 
@@ -1337,8 +1337,7 @@ bot.command('stock', async (ctx) => {
 
 
   await ctx.reply(text)
-
-})
+        })
 
 
 // Add link stock
@@ -1427,11 +1426,18 @@ bot.command('addaccount', async (ctx) => {
 
     saveDB(db)
 
+    await notifyAllUsers(
+      `🌸 HYUNA STORE UPDATE 🌸\n\n` +
+      `✨ New stock available!\n\n` +
+      `🌷 Gemini Pro / Flow is back in stock.\n\n` +
+      `🛒 You can order now!`
+    )
+
     delete adminStockFlow[ctx.from.id]
 
 
     return ctx.reply(
-      `✅ Added ${links.length} Gemini links.`
+      `✅ Added ${links.length} Gemini links and notified users.`
     )
   }
 
