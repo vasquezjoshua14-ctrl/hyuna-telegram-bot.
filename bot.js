@@ -389,7 +389,9 @@ try {
 } catch (e) {
   receiptData = null
 }
-
+let sameName = false
+let sameNumber = false
+let sameAmount = false
 if (receiptData) {
   ref = String(receiptData.reference || '').replace(/\s+/g, '').trim()
 const usedReference = ref
@@ -398,16 +400,12 @@ const usedReference = ref
       String(o.receipt?.reference || '').replace(/\s+/g, '').trim() === ref
     )
   : null
-
+ 
 if (usedReference) {
   receiptData.duplicateReference = true
 } else {
   receiptData.duplicateReference = false
-}
-  let sameName = false
-let sameNumber = false
-let sameAmount = false
-
+} 
   sameName = receiptData.recipient
     ?.toLowerCase()
     .includes(GCASH_NAME.toLowerCase())
