@@ -415,8 +415,6 @@ if (usedReference) {
   await ctx.reply(
     '⚠️ Receipt failed automatic verification. Sent to admin for manual checking.'
   )
-  }
-  }
 }
   order.receipt = {
   fileId: media.fileId,
