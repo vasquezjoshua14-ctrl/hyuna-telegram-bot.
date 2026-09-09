@@ -1433,7 +1433,7 @@ bot.command('addaccount', async (ctx) => {
   `https://t.me/AITOOLSHyuna_Bot?start=shop\n\n` +
   `💗 Thank you for supporting us!`
 );
-    )
+    
 
     delete adminStockFlow[ctx.from.id]
 
