@@ -562,7 +562,7 @@ async function processReceiptMedia(ctx, media) {
           normalizeReference(
             o.receipt?.reference
           ) === ref
-        )
+        )if
       : null
 
     receiptData.duplicateReference =
@@ -575,19 +575,29 @@ async function processReceiptMedia(ctx, media) {
       Number.isFinite(extractedAmount) &&
       extractedAmount === Number(order.totalPrice)
 
-    if (receiptData.datetime) {
-      const receiptTimestamp =
-        new Date(receiptData.datetime).getTime()
+     if (receiptData.datetime) {
+  const receiptDate = new Date(receiptData.datetime)
 
-      if (Number.isFinite(receiptTimestamp)) {
-        const ageMs =
-          Date.now() - receiptTimestamp
+  if (Number.isFinite(receiptDate.getTime())) {
+    const nowPH = new Date(
+      new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Manila"
+      })
+    )
 
-        receiptTimeValid =
-          ageMs >= 0 &&
-          ageMs <= 10 * 60 * 1000
-      }
-    }
+    const receiptPH = new Date(
+      receiptDate.toLocaleString("en-US", {
+        timeZone: "Asia/Manila"
+      })
+    )
+
+    const ageMs = nowPH - receiptPH
+
+    receiptTimeValid =
+      ageMs >= 0 &&
+      ageMs <= 10 * 60 * 1000
+  }
+     } 
 
     isReceipt =
       receiptData.is_receipt === true
