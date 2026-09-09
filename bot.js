@@ -8,36 +8,57 @@ const OpenAI = require('openai')
   apiKey: process.env.OPENAI_API_KEY
 })
 
-async function checkGcashReceipt(imageUrl) {
+async function checkPaymentReceipt(imageUrl) {
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
-        content: "Read GCash receipt images. Return JSON only."
+        content: `
+You are a payment receipt verification AI.
+
+Read any payment receipt image.
+It can be GCash, MariBank, Maya, bank transfer, or other e-wallet.
+
+Do not require a fixed format.
+
+Check if it looks like a real completed transaction.
+
+Extract:
+- payment method
+- recipient
+- recipient number if available
+- amount
+- date and time
+- reference number / transaction ID
+- transaction status
+
+Do not reject because of name formatting.
+Names may have dots, spaces, masking, or abbreviations.
+
+If unsure, send for manual review.
+
+Return JSON only:
+
+{
+"is_receipt": true,
+"payment_method": "",
+"recipient": "",
+"recipient_number": "",
+"amount": "",
+"datetime": "",
+"reference_number": "",
+"status": "",
+"confidence": 0
+}
+`
       },
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: `
-Extract:
-- recipient name
-- recipient number
-- amount
-- date and time
-- reference number
-
-Return JSON:
-{
- recipient:"",
- number:"",
- amount:"",
- datetime:"",
- reference:""
-}
-`
+            text: "Analyze this payment receipt."
           },
           {
             type: "image_url",
