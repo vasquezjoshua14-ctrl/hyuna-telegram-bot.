@@ -438,7 +438,6 @@ const receiptTimeValid =
   (Date.now() - new Date(receiptData.datetime).getTime()) <= (10 * 60 * 1000)
 
 }
-}
  if (!sameAmount || receiptData?.duplicateReference || !receiptTimeValid) {
 
   order.receiptStatus = 'pending_verification'
