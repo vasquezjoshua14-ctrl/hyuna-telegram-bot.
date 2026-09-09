@@ -418,7 +418,6 @@ if (usedReference) {
 }
 
 order.receipt = {
-  order.receipt = {
   fileId: media.fileId,
   fileUniqueId: media.fileUniqueId,
   mediaType: media.type,
