@@ -899,19 +899,26 @@ bot.action(/^approve_(.+)$/, async (ctx) => {
 })
 
 bot.on('photo', async (ctx, next) => {
-  const photo =
-    ctx.message.photo[
-      ctx.message
+  const photo = ctx.message.photo[ctx.message.photo.length - 1]
 
-   const handled =
-    await processReceiptMedia(ctx, {
-      type: 'document',
-      fileId: document.file_id,
-      fileUniqueId:
-        document.file_unique_id,
-      mimeType:
-        document.mime_type || ''
-    })
+  const handled = await processReceiptMedia(ctx, {
+    type: 'photo',
+    fileId: photo.file_id,
+    fileUniqueId: photo.file_unique_id
+  })
+
+  if (!handled) return next()
+})
+
+bot.on('document', async (ctx, next) => {
+  const document = ctx.message.document
+
+  const handled = await processReceiptMedia(ctx, {
+    type: 'document',
+    fileId: document.file_id,
+    fileUniqueId: document.file_unique_id,
+    mimeType: document.mime_type || ''
+  })
 
   if (!handled) return next()
 })
