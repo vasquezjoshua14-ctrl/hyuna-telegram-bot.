@@ -496,15 +496,41 @@ async function processReceiptMedia(ctx, media) {
       Number.isFinite(extractedAmount) &&
       extractedAmount === Number(order.totalPrice);
 
-    if (receiptData.datetime) {
-      const receiptTimestamp = new Date(receiptData.datetime).getTime();
+   if (receiptData.datetime) {
+  let datetime = receiptData.datetime.trim()
 
-      if (Number.isFinite(receiptTimestamp)) {
-        const ageMs = Date.now() - receiptTimestamp;
+  // Force Philippine Time kapag walang timezone
+  if (
+    !datetime.includes("Z") &&
+    !/[+-]\d{2}:\d{2}$/.test(datetime)
+  ) {
+    datetime += "+08:00"
+  }
+if (
+  !datetime.includes("Z") &&
+  !/[+-]\d{2}:\d{2}$/.test(datetime)
+) {
+  datetime += "+08:00"
+}
 
-        receiptTimeValid = ageMs >= 0 && ageMs <= 10 * 60 * 1000;
-      }
+// Convert wrong UTC output from AI to Philippine Time
+if (datetime.endsWith("+00:00")) {
+  datetime = datetime.replace("+00:00", "+08:00")
+}
+   
+  // Convert to timestamp for checking
+  const receiptTimestamp =
+    new Date(datetime).getTime()
+
+  if (Number.isFinite(receiptTimestamp)) {
+    const ageMs =
+      Date.now() - receiptTimestamp
+
+    receiptTimeValid =
+      ageMs >= 0 &&
+      ageMs <= 10 * 60 * 1000
     }
+   }
 
     isReceipt = receiptData.is_receipt === true;
 
