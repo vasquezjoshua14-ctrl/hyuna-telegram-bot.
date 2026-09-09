@@ -404,16 +404,20 @@ if (usedReference) {
 } else {
   receiptData.duplicateReference = false
 }
-  const sameName = receiptData.recipient
+  let sameName = false
+let sameNumber = false
+let sameAmount = false
+
+  sameName = receiptData.recipient
     ?.toLowerCase()
     .includes(GCASH_NAME.toLowerCase())
 
-  const sameNumber = receiptData.number
+  sameNumber = receiptData.number
     ?.replace(/\D/g, '')
     .includes(GCASH_NUMBER.replace(/\D/g, ''))
 
-  const sameAmount = Number(receiptData.amount) === Number(order.totalPrice)
-
+  sameAmount = Number(receiptData.amount) === Number(order.totalPrice)
+}
   if (!sameName || !sameNumber || !sameAmount || receiptData.duplicateReference) {
   order.receiptStatus = 'pending_verification'
 saveDB(db)
@@ -441,7 +445,6 @@ saveDB(db)
   await confirmPayment(order)
 
   return true
-  }
   }
   if (ADMIN_ID) {
     const reasons = []
