@@ -431,7 +431,13 @@ if (receiptData) {
   receiptData.duplicateReference = !!usedReference
 
   sameAmount =
-    Number(receiptData.amount) === Number(order.totalPrice)
+  Number(receiptData.amount) === Number(order.totalPrice)
+
+const receiptTimeValid =
+  receiptData.datetime &&
+  (Date.now() - new Date(receiptData.datetime).getTime()) <= (10 * 60 * 1000)
+
+}
 }
  if (!sameAmount || receiptData?.duplicateReference || !receiptTimeValid) {
   order.receiptStatus = 'pending_verification'
