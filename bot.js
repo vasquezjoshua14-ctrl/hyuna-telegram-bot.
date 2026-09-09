@@ -984,15 +984,15 @@ bot.action('my_orders', async (ctx) => {
 
 bot.on('text', async (ctx, next) => {
 
-  const pending =
-    pendingOrders[ctx.from.id]
-
-  if (!pending) {
+  // Ignore commands like /admin /addstock /menu
+  if (ctx.message.text?.startsWith('/')) {
     return next()
   }
 
-  const text =
-    (ctx.message.text || '').trim()
+  const pending = pendingOrders[ctx.from.id]
+  if (!pending) return next()
+
+  const text = (ctx.message.text || '').trim()
 
   const q = Number(text)
 
