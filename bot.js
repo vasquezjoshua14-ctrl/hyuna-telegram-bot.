@@ -467,8 +467,16 @@ bot.on("text", async (ctx, next) => {
 
     saveDB(db);
 
-    delete adminStockFlow[ctx.from.id];
+await notifyAllUsers(
+  `🌸 HYUNA STORE UPDATE 🌸\n\n` +
+  `🌷 New Gemini stock available!\n\n` +
+  `📦 Added stock: ${links.length}\n\n` +
+  `🛒 ORDER NOW\n` +
+  `https://t.me/AITOOLSHyuna_Bot?start=shop\n\n` +
+  `💗 Thank you for supporting us!`
+);
 
+delete adminStockFlow[ctx.from.id];
     await ctx.reply(
       `✅ GEMINI STOCK ADDED!\n\n` +
       `🌷 Added: ${links.length}\n\n` +
@@ -548,6 +556,14 @@ bot.on("text", async (ctx, next) => {
     saveDB(db);
 
     delete adminStockFlow[ctx.from.id];
+    await notifyAllUsers(
+  `🌸 HYUNA STORE UPDATE 🌸\n\n` +
+  `🎀 New CapCut Pro stock available!\n\n` +
+  `📦 Added stock: ${accounts.length}\n\n` +
+  `🛒 ORDER NOW\n` +
+  `https://t.me/AITOOLSHyuna_Bot?start=shop\n\n` +
+  `💗 Thank you for supporting us!`
+);
 
     await ctx.reply(
       `✅ CAPCUT STOCK ADDED!\n\n` +
