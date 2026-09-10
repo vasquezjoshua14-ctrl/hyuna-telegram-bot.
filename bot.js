@@ -247,6 +247,324 @@ async function sendHome(ctx) {
 
 bot.start(sendHome);
 bot.command("menu", sendHome);
+// ===============================
+// ADMIN PANEL
+// ===============================
+
+bot.command("admin", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.reply("❌ Unauthorized.");
+  }
+
+  const db = loadDB();
+
+  const geminiStock = db.stock.filter(
+    (s) => s.productId === "gemini"
+  ).length;
+
+  const capcutStock = db.stock.filter(
+    (s) => s.productId === "capcut"
+  ).length;
+
+  await ctx.reply(
+    `👑 ADMIN PANEL\n\n` +
+    `📦 CURRENT STOCK\n\n` +
+    `🌷 Gemini: ${geminiStock}\n` +
+    `🎀 CapCut: ${capcutStock}\n\n` +
+    `Choose an action:`,
+    {
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "➕ Add Gemini Stock",
+            "admin_add_gemini"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "➕ Add CapCut Stock",
+            "admin_add_capcut"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "📦 Check Stock",
+            "admin_stock"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "❌ Cancel Add Stock",
+            "admin_cancel_stock"
+          ),
+        ],
+      ]),
+    }
+  );
+});
+
+
+// ===============================
+// CHECK STOCK
+// ===============================
+
+bot.action("admin_stock", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery("Unauthorized");
+  }
+
+  await ctx.answerCbQuery();
+
+  const db = loadDB();
+
+  const geminiStock = db.stock.filter(
+    (s) => s.productId === "gemini"
+  ).length;
+
+  const capcutStock = db.stock.filter(
+    (s) => s.productId === "capcut"
+  ).length;
+
+  await ctx.reply(
+    `📦 STOCK STATUS\n\n` +
+    `🌷 Gemini: ${geminiStock}\n` +
+    `🎀 CapCut: ${capcutStock}`
+  );
+});
+
+
+// ===============================
+// ADD GEMINI STOCK
+// ===============================
+
+bot.action("admin_add_gemini", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery("Unauthorized");
+  }
+
+  await ctx.answerCbQuery();
+
+  adminStockFlow[ctx.from.id] = {
+    productId: "gemini",
+    type: "link",
+  };
+
+  await ctx.reply(
+    `🌷 ADD GEMINI STOCK\n\n` +
+    `Send Gemini links.\n\n` +
+    `One link per line.\n\n` +
+    `Example:\n` +
+    `https://example.com/link1\n` +
+    `https://example.com/link2\n` +
+    `https://example.com/link3`
+  );
+});
+
+
+// ===============================
+// ADD CAPCUT STOCK
+// ===============================
+
+bot.action("admin_add_capcut", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery("Unauthorized");
+  }
+
+  await ctx.answerCbQuery();
+
+  adminStockFlow[ctx.from.id] = {
+    productId: "capcut",
+    type: "email_password",
+  };
+
+  await ctx.reply(
+    `🎀 ADD CAPCUT STOCK\n\n` +
+    `Send one account per line.\n\n` +
+    `Format:\n` +
+    `email|password\n\n` +
+    `Example:\n` +
+    `user@yahoo.com|password123\n` +
+    `user@outlook.com|password456\n` +
+    `user@icloud.com|password789`
+  );
+});
+
+
+// ===============================
+// CANCEL ADD STOCK
+// ===============================
+
+bot.action("admin_cancel_stock", async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery("Unauthorized");
+  }
+
+  await ctx.answerCbQuery();
+
+  delete adminStockFlow[ctx.from.id];
+
+  await ctx.reply("❌ Add stock cancelled.");
+});
+
+
+// ===============================
+// ADMIN STOCK INPUT HANDLER
+// ===============================
+
+bot.on("text", async (ctx, next) => {
+  if (!isAdmin(ctx)) {
+    return next();
+  }
+
+  const flow = adminStockFlow[ctx.from.id];
+
+  if (!flow) {
+    return next();
+  }
+
+  const text = (ctx.message.text || "").trim();
+
+  if (!text) {
+    return next();
+  }
+
+  // Allow commands to continue normally
+  if (text.startsWith("/")) {
+    return next();
+  }
+
+  const db = loadDB();
+
+
+  // ===============================
+  // SAVE GEMINI LINKS
+  // ===============================
+
+  if (
+    flow.productId === "gemini" &&
+    flow.type === "link"
+  ) {
+    const links = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("http://") || line.startsWith("https://"));
+
+    if (!links.length) {
+      return ctx.reply(
+        `❌ Walang valid Gemini link.\n\n` +
+        `Send one link per line.`
+      );
+    }
+
+    for (const link of links) {
+      db.stock.push({
+        productId: "gemini",
+        type: "link",
+        link: link,
+        addedAt: new Date().toISOString(),
+      });
+    }
+
+    saveDB(db);
+
+    delete adminStockFlow[ctx.from.id];
+
+    await ctx.reply(
+      `✅ GEMINI STOCK ADDED!\n\n` +
+      `🌷 Added: ${links.length}\n\n` +
+      `📦 Total Gemini Stock: ${
+        db.stock.filter((s) => s.productId === "gemini").length
+      }`
+    );
+
+    return;
+  }
+
+
+  // ===============================
+  // SAVE CAPCUT EMAIL + PASSWORD
+  // ===============================
+
+  if (
+    flow.productId === "capcut" &&
+    flow.type === "email_password"
+  ) {
+    const lines = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const accounts = [];
+
+    for (const line of lines) {
+      const separatorIndex = line.indexOf("|");
+
+      if (separatorIndex === -1) {
+        continue;
+      }
+
+      const email = line
+        .slice(0, separatorIndex)
+        .trim();
+
+      const password = line
+        .slice(separatorIndex + 1)
+        .trim();
+
+      if (!email || !password) {
+        continue;
+      }
+
+      if (!email.includes("@")) {
+        continue;
+      }
+
+      accounts.push({
+        email,
+        password,
+      });
+    }
+
+    if (!accounts.length) {
+      return ctx.reply(
+        `❌ Invalid format.\n\n` +
+        `Use:\n` +
+        `email|password\n\n` +
+        `Example:\n` +
+        `user@yahoo.com|password123`
+      );
+    }
+
+    for (const account of accounts) {
+      db.stock.push({
+        productId: "capcut",
+        type: "email_password",
+        email: account.email,
+        password: account.password,
+        addedAt: new Date().toISOString(),
+      });
+    }
+
+    saveDB(db);
+
+    delete adminStockFlow[ctx.from.id];
+
+    await ctx.reply(
+      `✅ CAPCUT STOCK ADDED!\n\n` +
+      `🎀 Added: ${accounts.length}\n\n` +
+      `📦 Total CapCut Stock: ${
+        db.stock.filter((s) => s.productId === "capcut").length
+      }`
+    );
+
+    return;
+  }
+
+
+  delete adminStockFlow[ctx.from.id];
+
+  return next();
+});
 
 bot.action("products", async (ctx) => {
   await ctx.answerCbQuery();
