@@ -1008,7 +1008,7 @@ async function processReceiptMedia(ctx, media) {
       `Expected total: ₱${order.totalPrice}\n\n` +
       `AI payment method: ${receiptData?.payment_method || "Unreadable"}\n` +
       `AI amount: ${receiptData?.amount || "Unreadable"}\n` +
-      `AI date/time: ${receiptData?.datetime || "Unreadable"} (UTC)\n` +
+      `AI date/time: ${receiptData?.datetime || "Unreadable"}\n` +
       `AI reference: ${ref || "Unreadable"}\n` +
       `AI confidence: ${Math.round(confidence * 100) || 0}%\n\n` +
       `Reason:\n${reasons.join("\n")}\n\n` +
