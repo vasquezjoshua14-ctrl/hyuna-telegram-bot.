@@ -931,7 +931,6 @@ bot.hears(
     const order = db.orders.find(
       (o) => o.id === id && o.userId === ctx.from.id
     );
-        const db = loadDB();
 
     for (const link of links) {
       db.stock.push({
