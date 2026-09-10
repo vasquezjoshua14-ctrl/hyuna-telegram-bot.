@@ -870,13 +870,18 @@ async function processReceiptMedia(ctx, media) {
       extractedAmount === Number(order.totalPrice);
 
     if (receiptData.datetime) {
-      const receiptTimestamp = new Date(receiptData.datetime).getTime();
+  const receiptTimestamp = parseReceiptDateTime(
+    receiptData.datetime,
+    receiptData.payment_method
+  );
 
-      if (Number.isFinite(receiptTimestamp)) {
-        const ageMs = Date.now() - receiptTimestamp;
+  if (Number.isFinite(receiptTimestamp)) {
+    const ageMs = Date.now() - receiptTimestamp;
 
-        receiptTimeValid = ageMs >= 0 && ageMs <= 10 * 60 * 1000;
-      }
+    receiptTimeValid =
+      ageMs >= -2 * 60 * 1000 &&
+      ageMs <= 10 * 60 * 1000;
+  }
     }
     isReceipt = receiptData.is_receipt === true;
 
