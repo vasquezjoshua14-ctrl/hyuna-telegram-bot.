@@ -961,25 +961,27 @@ async function requestCanvaGmail(order) {
 
 
 
-  await bot.telegram.sendMessage(
-  order.userId,
+    await bot.telegram.sendMessage(
+    order.userId,
 
-  `🎨 Payment confirmed!\n\n` +
-  `🧾 Order: ${order.id}\n\n` +
-  `Please send your Gmail for Canva invite.\n\n` +
-  `After sending, wait for admin invite.`,
+    `🎨 Payment confirmed!\n\n` +
+    `🧾 Order: ${order.id}\n\n` +
+    `Please send your Gmail for Canva invite.\n\n` +
+    `After sending, wait for admin invite.`,
 
-  {
-    reply_markup: Markup.inlineKeyboard([
-      [
-        Markup.button.url(
-          "📩 Open Gmail",
-          gmailLink
-        )
-      ]
-    ])
-  }
-);
+    {
+      reply_markup: Markup.inlineKeyboard([
+        [
+          Markup.button.url(
+            "📩 Open Gmail",
+            gmailLink
+          )
+        ]
+      ])
+    }
+  );
+
+}
 // ===============================
 // STOCK DELIVERY + UNIVERSAL ACCOUNT
 // PART 6/6
