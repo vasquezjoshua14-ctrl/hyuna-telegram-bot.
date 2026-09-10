@@ -378,14 +378,11 @@ bot.action("payment_guide", async (ctx) => {
         : {}),
     }
   );
-});
       if (Number.isFinite(receiptTimestamp)) {
         const ageMs = Date.now() - receiptTimestamp;
 
         receiptTimeValid = ageMs >= 0 && ageMs <= 10 * 60 * 1000;
       }
-    }
-
     isReceipt = receiptData.is_receipt === true;
 
     confidence = Number(receiptData.confidence);
