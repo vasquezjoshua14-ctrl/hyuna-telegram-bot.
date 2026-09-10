@@ -2,13 +2,11 @@ const { Telegraf, Markup } = require("telegraf");
 const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
-
 const OpenAI = require("openai");
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
 
 async function checkPaymentReceipt(imageUrl) {
   const response = await openai.chat.completions.create({
@@ -16,25 +14,7 @@ async function checkPaymentReceipt(imageUrl) {
     messages: [
       {
         role: "system",
-        content: `
-You are a payment receipt verification AI.
-
-Analyze payment receipt images.
-
-Return JSON only:
-
-{
-"is_receipt": true,
-"payment_method": "",
-"recipient": "",
-"recipient_number": "",
-"amount": "",
-"datetime": "",
-"reference_number": "",
-"status": "",
-"confidence": 0
-}
-`,
+        content: ` You are a payment receipt verification AI. Analyze payment receipt images from GCash, Maya, MariBank, banks, and other e-wallets. Do not require one fixed receipt format. Do not reject a receipt only because a recipient name is masked, abbreviated, contains dots, spaces, or has a different display format. Determine whether the image appears to show a completed payment transaction. Extract: - payment method - recipient - recipient number if visible - amount - transaction date and time - reference number / transaction ID - transaction status IMPORTANT: - Never invent information that cannot be read. - Use an empty string for unreadable/missing fields. - "confidence" must be a number from 0 to 1. - "is_receipt" should be true only when the image appears to be a payment receipt. - For datetime, return ISO 8601 including timezone when you can determine it. - If you are uncertain, lower the confidence instead of inventing data. Return JSON only: { "is_receipt": true, "payment_method": "", "recipient": "", "recipient_number": "", "amount": "", "datetime": "", "reference_number": "", "status": "", "confidence": 0 } `,
       },
       {
         role: "user",
@@ -57,1336 +37,750 @@ Return JSON only:
   return response.choices[0].message.content;
 }
 
-
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_ID = Number(process.env.ADMIN_ID || 0);
+const CHANNEL_URL = process.env.CHANNEL_URL || "https://t.me/YOUR_CHANNEL";
+const CHANNEL_ID = process.env.CHANNEL_ID || "";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "YOUR_ADMIN_USERNAME";
+const GCASH_NAME = process.env.GCASH_NAME || "GCash Account";
+const GCASH_NUMBER = process.env.GCASH_NUMBER || "09XXXXXXXXX";
 
-const ADMIN_ID = Number(
-  process.env.ADMIN_ID || 0
-);
-
-const CHANNEL_URL =
-  process.env.CHANNEL_URL ||
-  "https://t.me/YOUR_CHANNEL";
-
-const CHANNEL_ID =
-  process.env.CHANNEL_ID || "";
-
-
-const ADMIN_USERNAME =
-  process.env.ADMIN_USERNAME ||
-  "YOUR_ADMIN_USERNAME";
-
-
-const ADMIN_TG_LINK =
-  `https://t.me/${ADMIN_USERNAME}`;
-
-
-const GCASH_NAME =
-  process.env.GCASH_NAME ||
-  "GCash Account";
-
-
-const GCASH_NUMBER =
-  process.env.GCASH_NUMBER ||
-  "09XXXXXXXXX";
-
-
-if (!BOT_TOKEN) {
-  throw new Error(
-    "Missing BOT_TOKEN in .env"
-  );
+if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN in .env");
+if (!ADMIN_ID) {
+  console.warn("⚠️ ADMIN_ID is not set. Admin commands will not work.");
 }
 
+const bot = new Telegraf(BOT_TOKEN);
 
-const bot = new Telegraf(
-  BOT_TOKEN
-);
+const DB_FILE = path.join(__dirname, "db.json");
+const WELCOME_IMAGE = path.join(__dirname, "hyuna-welcome.png");
 
-
-// DATABASE FILE
-const DB_FILE =
-  path.join(
-    __dirname,
-    "db.json"
-  );
-
-
-const WELCOME_IMAGE =
-  path.join(
-    __dirname,
-    "hyuna-welcome.png"
-  );
 const PRODUCTS = {
-
   gemini: {
     id: "gemini",
-    emoji: "💫",
+    emoji: "🌷",
     name: "Gemini Pro / Flow",
     price: 100,
-    details: [
-      "1K Credits",
-      "18 Months"
-    ],
+    details: ["1K Credits", "18 Months"],
     note: "⚠️ No warranty after claim",
-    deliveryType: "link"
+    deliveryType: "link",
   },
-
 
   capcut: {
     id: "capcut",
-    emoji: "🎬",
+    emoji: "🎀",
     name: "CapCut Pro",
     price: 150,
-    details: [
-      "1 Month"
-    ],
+    details: ["1 Month"],
     note: "",
-    deliveryType: "email_password"
+    deliveryType: "email_password",
   },
-
 
   chatgpt: {
     id: "chatgpt",
-    emoji: "🤖",
+    emoji: "💕",
     name: "ChatGPT Shared",
     price: 450,
-    details: [
-      "Shared account",
-      "1 device only"
-    ],
-    note:
-      "💬 Manual delivery - Message admin",
-    deliveryType: "manual"
+    details: ["Shared by 4 persons", "1 device only", "Stable account"],
+    note: "🛡 Full warranty • Manual account delivery up to 12 hours",
+    deliveryType: "manual",
   },
-
 
   canva: {
     id: "canva",
-    emoji: "🎨",
+    emoji: "🧁",
     name: "Canva Pro",
     price: 30,
-    details: [
-      "1 Month+",
-      "Via invite"
-    ],
-    note:
-      "📩 Gmail required for invite",
-    deliveryType: "manual_invite"
-  }
-
+    details: ["1 Month+", "Via invite"],
+    note: "📧 Send Gmail after payment • Manual delivery",
+    deliveryType: "manual_invite",
+  },
 };
-
-
-
 const pendingOrders = {};
-
 const adminStockFlow = {};
-
+const adminDelStockFlow = {};
 const pendingReceiptOrders = {};
 
-
-
 function loadDB() {
-
   if (!fs.existsSync(DB_FILE)) {
-
     const fresh = {
-
       orders: [],
-
       stock: [],
-
-      users: []
-
+      users: [],
     };
 
-
-    fs.writeFileSync(
-      DB_FILE,
-      JSON.stringify(
-        fresh,
-        null,
-        2
-      )
-    );
-
-
+    fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
     return fresh;
-
   }
 
+  const raw = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
 
-  const raw =
-    JSON.parse(
-      fs.readFileSync(
-        DB_FILE,
-        "utf8"
-      )
-    );
+  if (raw.stock && !Array.isArray(raw.stock)) {
+    const unified = [];
 
+    for (const [pid, items] of Object.entries(raw.stock)) {
+      if (!Array.isArray(items)) continue;
 
-  raw.orders =
-    raw.orders || [];
+      for (const it of items) {
+        if (!it || typeof it !== "object") continue;
 
+        if (it.email && it.password) {
+          unified.push({
+            productId: pid,
+            type: "email_password",
+            email: it.email,
+            password: it.password,
+            addedAt: it.addedAt || new Date().toISOString(),
+          });
+        } else if (it.link) {
+          unified.push({
+            productId: pid,
+            type: "link",
+            link: it.link,
+            addedAt: it.addedAt || new Date().toISOString(),
+          });
+        }
+      }
+    }
 
-  raw.stock =
-    raw.stock || [];
+    raw.stock = unified;
+    fs.writeFileSync(DB_FILE, JSON.stringify(raw, null, 2));
+  }
 
-
-  raw.users =
-    raw.users || [];
-
+  raw.stock = raw.stock || [];
+  raw.orders = raw.orders || [];
+  raw.users = raw.users || [];
 
   return raw;
-
 }
-
-
 
 function saveDB(db) {
-
-  fs.writeFileSync(
-    DB_FILE,
-    JSON.stringify(
-      db,
-      null,
-      2
-    )
-  );
-
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
-
-
-function getProductStockCount(productId) {
-
+async function notifyAllUsers(message) {
   const db = loadDB();
 
-  return db.stock.filter(
-    item =>
-      item.productId === productId
-  ).length;
+  for (const user of db.users) {
+    await bot.telegram.sendMessage(user.id, message).catch(() => {});
+  }
 
+  if (CHANNEL_ID) {
+    await bot.telegram.sendMessage(CHANNEL_ID, message).catch(() => {});
+  }
 }
+
+function orderId() {
+  const part = Math.random().toString(36).slice(2, 6).toUpperCase();
+
+  return `HYU-${part}`;
+}
+
+function isAdmin(ctx) {
+  const userId = Number(ctx.from?.id);
+  const isAllowed = userId === ADMIN_ID;
+
+  if (process.env.DEBUG_ADMIN) {
+    console.log(
+      `[ADMIN CHECK] User: ${userId}, ADMIN_ID: ${ADMIN_ID}, Allowed: ${isAllowed}`
+    );
+  }
+
+  return isAllowed;
+}
+
+function normalizeReference(value) {
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function parseReceiptAmount(value) {
+  const cleaned = String(value ?? "")
+    .replace(/,/g, "")
+    .replace(/[^0-9.-]/g, "");
+
+  if (!cleaned) return NaN;
+
+  return Number(cleaned);
+}
+
 function menuKeyboard() {
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback(
-        "🛍 Products",
-        "products"
-      ),
-      Markup.button.callback(
-        "📦 My Orders",
-        "my_orders"
-      )
+      Markup.button.callback("🛍 Products", "products"),
+      Markup.button.callback("📦 My Orders", "my_orders"),
     ],
     [
-      Markup.button.callback(
-        "💸 Payment Guide",
-        "payment_guide"
-      ),
-      Markup.button.url(
-        "📢 Channel",
-        CHANNEL_URL
-      )
+      Markup.button.callback("💳 Payment Guide", "payment_guide"),
+      Markup.button.url("📢 Channel", CHANNEL_URL),
     ],
-    [
-      Markup.button.url(
-        "💬 Contact Admin",
-        ADMIN_TG_LINK
-      )
-    ]
+    [Markup.button.url("📩 Contact Admin", `https://t.me/${ADMIN_USERNAME}`)],
   ]);
 }
-
-
 async function sendHome(ctx) {
-
   const caption =
     "🌸 *Welcome to Hyuna Store!* 🌸\n" +
     "Your cute & trusted digital shop 💗\n\n" +
     "Choose an option below:";
 
-
   if (fs.existsSync(WELCOME_IMAGE)) {
-
     await ctx.replyWithPhoto(
-      {
-        source: WELCOME_IMAGE
-      },
+      { source: WELCOME_IMAGE },
       {
         caption,
         parse_mode: "Markdown",
-        ...menuKeyboard()
+        ...menuKeyboard(),
       }
     );
-
   } else {
-
-    await ctx.reply(
-      caption,
-      {
-        parse_mode: "Markdown",
-        ...menuKeyboard()
-      }
-    );
-
+    await ctx.reply(caption, {
+      parse_mode: "Markdown",
+      ...menuKeyboard(),
+    });
   }
 }
-
 
 bot.start(sendHome);
+bot.command("menu", sendHome);
 
-bot.command(
-  "menu",
-  sendHome
-);
+bot.action("products", async (ctx) => {
+  await ctx.answerCbQuery();
 
+  let text =
+    "🌸✨ *HYUNA STORE — AVAILABLE PRODUCTS* ✨🌸\n" +
+    "Choose your fave below 💗\n\n";
 
-bot.action(
-  "home",
-  async (ctx) => {
+  for (const p of Object.values(PRODUCTS)) {
+    text += `${p.emoji} *${p.name} — ₱${p.price}*\n`;
 
-    await ctx.answerCbQuery();
+    for (const d of p.details) {
+      text += `✦ ${d}\n`;
+    }
 
-    await sendHome(ctx);
+    if (p.note) {
+      text += `${p.note}\n`;
+    }
 
+    text += "\n";
   }
-);
 
+  text += "🌸 _Please read the product details before ordering._";
 
-bot.action(
-  "products",
-  async (ctx) => {
+  await ctx.reply(text, {
+    parse_mode: "Markdown",
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback("🌷 Buy Gemini", "buy:gemini")],
+      [Markup.button.callback("🎀 Buy CapCut", "buy:capcut")],
+      [Markup.button.callback("💕 Buy ChatGPT", "buy:chatgpt")],
+      [Markup.button.callback("🧁 Buy Canva", "buy:canva")],
+      [Markup.button.callback("⬅️ Back to Menu", "home")],
+    ]),
+  });
+});
+bot.action("home", async (ctx) => {
+  await ctx.answerCbQuery();
+  await sendHome(ctx);
+});
 
-    await ctx.answerCbQuery();
+bot.action(/^buy:(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
 
+  const productId = ctx.match[1];
+  const product = PRODUCTS[productId];
 
-    const geminiStock =
-      getProductStockCount(
-        "gemini"
-      );
-
-
-    const capcutStock =
-      getProductStockCount(
-        "capcut"
-      );
-
-
-    let text =
-      "🌸✨ *HYUNA STORE — AVAILABLE PRODUCTS* ✨🌸\n" +
-      "Choose your fave below 💗\n\n";
-
-
-    for (
-      const product
-      of Object.values(PRODUCTS)
-    ) {
-
-      text +=
-        `${product.emoji} *${product.name} — ₱${product.price}*\n`;
-
-
-      for (
-        const detail
-        of product.details
-      ) {
-
-        text +=
-          `✅ ${detail}\n`;
-
-      }
-
-
-      if (product.note) {
-
-        text +=
-          `${product.note}\n`;
-
-      }
-
-
-      text += "\n";
-
-    }
-
-
-    text +=
-      "🌸 _Please read the product details before ordering._";
-
-
-    await ctx.reply(
-      text,
-      {
-        parse_mode: "Markdown",
-
-        ...Markup.inlineKeyboard([
-
-          [
-            Markup.button.callback(
-              `💫 Buy Gemini 👉 (${geminiStock})`,
-              "buy:gemini"
-            )
-          ],
-
-          [
-            Markup.button.callback(
-              `🎬 Buy CapCut 👉 (${capcutStock})`,
-              "buy:capcut"
-            )
-          ],
-
-          [
-            Markup.button.callback(
-              "🤖 Buy ChatGPT",
-              "buy:chatgpt"
-            )
-          ],
-
-          [
-            Markup.button.callback(
-              "🎨 Buy Canva",
-              "buy:canva"
-            )
-          ],
-
-          [
-            Markup.button.callback(
-              "⬅️ Back to Menu",
-              "home"
-            )
-          ]
-
-        ])
-
-      }
-    );
-
+  if (!product) {
+    return ctx.reply("Product not found.");
   }
-);
 
+  pendingOrders[ctx.from.id] = {
+    productId,
+    createdAt: new Date().toISOString(),
+  };
 
-bot.action(
-  /^buy:(.+)$/,
-  async (ctx) => {
+  await ctx.reply("🛒 Ilan ang order? (1-50)\nHalimbawa: 5", {
+    reply_markup: {
+      force_reply: false,
+    },
+  });
+});
 
-    await ctx.answerCbQuery();
+bot.action(/^cancel:(HYU-.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
 
+  const id = ctx.match[1];
+  const db = loadDB();
 
-    const productId =
-      ctx.match[1];
+  const order = db.orders.find((o) => o.id === id && o.userId === ctx.from.id);
 
-
-    const product =
-      PRODUCTS[productId];
-
-
-    if (!product) {
-
-      return ctx.reply(
-        "Product not found."
-      );
-
-    }
-
-
-    /*
-      Check stock BEFORE asking quantity
-      for automatic-delivery products.
-    */
-
-    if (
-      product.deliveryType === "link" ||
-      product.deliveryType === "email_password"
-    ) {
-
-      const available =
-        getProductStockCount(
-          product.id
-        );
-
-
-      if (available <= 0) {
-
-        return ctx.reply(
-          `❌ ${product.name} is currently out of stock.`
-        );
-
-      }
-
-    }
-
-
-    pendingOrders[ctx.from.id] = {
-
-      productId,
-
-      createdAt:
-        new Date().toISOString()
-
-    };
-
-
-    await ctx.reply(
-      "🛒 Ilan ang order? (1-50)\n" +
-      "Halimbawa: 5"
-    );
-
+  if (!order) {
+    return ctx.reply("Order not found.");
   }
-);
-// ===============================
-// ORDER QUANTITY + CREATE ORDER
-// PART 4/6
-// ===============================
 
-
-bot.on(
-  "text",
-  async (ctx, next) => {
-
-
-    if (
-      ctx.message.text?.startsWith("/")
-    ) {
-      return next();
-    }
-
-
-    const pending =
-      pendingOrders[ctx.from.id];
-
-
-    if (!pending) {
-
-      return next();
-
-    }
-
-
-    const quantity =
-      Number(
-        ctx.message.text.trim()
-      );
-
-
-    if (
-      !Number.isInteger(quantity) ||
-      quantity < 1 ||
-      quantity > 50
-    ) {
-
-      return ctx.reply(
-        "❌ Invalid quantity. Enter 1-50."
-      );
-
-    }
-
-
-    const product =
-      PRODUCTS[pending.productId];
-
-
-    if (!product) {
-
-      delete pendingOrders[ctx.from.id];
-
-      return ctx.reply(
-        "❌ Product not found."
-      );
-
-    }
-
-
-
-    const db =
-      loadDB();
-
-
-
-    if (
-      product.deliveryType === "link" ||
-      product.deliveryType === "email_password"
-    ) {
-
-
-      const available =
-        db.stock.filter(
-          item =>
-            item.productId === product.id
-        ).length;
-
-
-
-      if (
-        quantity > available
-      ) {
-
-        return ctx.reply(
-          `❌ Not enough stock.\n\nAvailable: ${available}\nRequested: ${quantity}`
-        );
-
-      }
-
-    }
-
-
-
-
-    const order = {
-
-      id:
-        "HYU-" +
-        Math.random()
-          .toString(36)
-          .slice(2,8)
-          .toUpperCase(),
-
-
-      userId:
-        ctx.from.id,
-
-
-      username:
-        ctx.from.username || "",
-
-
-      firstName:
-        ctx.from.first_name || "",
-
-
-      lastName:
-        ctx.from.last_name || "",
-
-
-      productId:
-        product.id,
-
-
-      productName:
-        product.name,
-
-
-      quantity,
-
-
-      pricePerItem:
-        product.price,
-
-
-      totalPrice:
-        product.price * quantity,
-
-
-      status:
-        "waiting_payment",
-
-
-      createdAt:
-        new Date().toISOString(),
-
-
-      paymentExpiresAt:
-        Date.now() +
-        (10 * 60 * 1000),
-
-
-      gmail:
-        null,
-
-
-      deliveredItems:
-        []
-
-    };
-
-
-
-    db.orders.push(
-      order
-    );
-
-
-
-    const userExists =
-      db.users.find(
-        user =>
-          user.id === ctx.from.id
-      );
-
-
-
-    if (!userExists) {
-
-      db.users.push({
-
-        id:
-          ctx.from.id,
-
-        username:
-          ctx.from.username || "",
-
-        firstName:
-          ctx.from.first_name || "",
-
-        lastName:
-          ctx.from.last_name || "",
-
-        createdAt:
-          new Date().toISOString()
-
-      });
-
-    }
-
-
-
-    saveDB(db);
-
-
-
-    delete pendingOrders[ctx.from.id];
-
-
-
-    await ctx.reply(
-
-      `🛒 *ORDER CREATED!*\n\n` +
-
-      `${product.emoji} Product: *${product.name}*\n` +
-
-      `📦 Quantity: *${quantity}*\n` +
-
-      `💰 Price: *₱${product.price} each*\n` +
-
-      `💵 Total: *₱${order.totalPrice}*\n\n` +
-
-      `🧾 Order ID: \`${order.id}\`\n\n` +
-
-      `⏳ Waiting for Payment`,
-
-      {
-
-        parse_mode:
-          "Markdown",
-
-        ...Markup.inlineKeyboard([
-
-          [
-            Markup.button.callback(
-              "💸 Payment Guide",
-              "payment_guide"
-            )
-          ],
-
-          [
-            Markup.button.callback(
-              "❌ Cancel Order",
-              `cancel:${order.id}`
-            )
-          ]
-
-        ])
-
-      }
-
-    );
-
-
-
-    if (ADMIN_ID) {
-
-      await bot.telegram.sendMessage(
-
-        ADMIN_ID,
-
-        `🛒 New Order\n\n` +
-
-        `Order: ${order.id}\n` +
-
-        `Product: ${product.name}\n` +
-
-        `Qty: ${quantity}\n` +
-
-        `Total: ₱${order.totalPrice}\n` +
-
-        `Buyer: @${order.username || "no_username"} (${order.userId})`
-
-      ).catch(
-        () => {}
-      );
-
-    }
-
-
+  if (order.status !== "waiting_payment") {
+    return ctx.reply("This order can no longer be cancelled.");
   }
-);
-// ===============================
-// PAYMENT GUIDE + MANUAL DELIVERY
-// PART 5/6
-// ===============================
 
+  order.status = "cancelled";
+  saveDB(db);
 
-bot.action(
-  "payment_guide",
-  async (ctx) => {
+  delete pendingReceiptOrders[ctx.from.id];
 
-    await ctx.answerCbQuery();
+  await ctx.reply(`❌ Order \`${id}\` cancelled.`, { parse_mode: "Markdown" });
+});
 
+bot.action("payment_guide", async (ctx) => {
+  await ctx.answerCbQuery();
 
-    const db =
-      loadDB();
+  const db = loadDB();
 
+  const order = db.orders
+    .filter((o) => o.userId === ctx.from.id && o.status === "waiting_payment")
+    .slice(-1)[0];
 
-    const order =
-      db.orders
-        .filter(
-          o =>
-            o.userId === ctx.from.id &&
-            o.status === "waiting_payment"
-        )
-        .slice(-1)[0];
+  let caption =
+    "💳 *PAYMENT GUIDE* 🌸\n\n" +
+    `📱 GCash Name: ${GCASH_NAME}\n` +
+    `💰 GCash Number: ${GCASH_NUMBER}\n\n` +
+    "Scan the QR code to pay.\n\n" +
+    "💗 Keep your Order ID for reference.\n\n";
 
+  if (order) {
+    caption =
+      `🧾 *PAYMENT SUMMARY*\n\n` +
+      `Product: *${order.productName}*\n` +
+      `Quantity: *${order.quantity}*\n` +
+      `Price: *₱${order.pricePerItem} each*\n` +
+      `Total: *₱${order.totalPrice}*\n\n` +
+      caption;
+  }
+  
+    isReceipt = receiptData.is_receipt === true;
 
+    confidence = Number(receiptData.confidence);
 
-    let message =
-
-      "💸 *PAYMENT GUIDE*\n\n" +
-
-      `📱 GCash Name: ${GCASH_NAME}\n` +
-
-      `💵 GCash Number: ${GCASH_NUMBER}\n\n` +
-
-      "Send payment then press Send Receipt.\n\n";
-
-
-
-    if (order) {
-
-      message =
-
-        `🧾 *PAYMENT SUMMARY*\n\n` +
-
-        `Product: *${order.productName}*\n` +
-
-        `Quantity: *${order.quantity}*\n` +
-
-        `Total: *₱${order.totalPrice}*\n\n` +
-
-        message;
-
+    /* * Accept 0-1 or 0-100 just in case the AI * unexpectedly returns a percentage. */
+    if (Number.isFinite(confidence) && confidence > 1) {
+      confidence = confidence / 100;
     }
 
+    confidenceOkay = Number.isFinite(confidence) && confidence >= 0.5;
 
+    /* * Recipient number is checked only when the * receipt actually exposes a readable number. * Missing/masked number alone does not reject it. */
+    const extractedNumber = normalizePhone(receiptData.recipient_number);
 
-    await ctx.reply(
+    const expectedNumber = normalizePhone(GCASH_NUMBER);
 
-      message,
-
-      {
-
-        parse_mode:
-          "Markdown",
-
-        ...Markup.inlineKeyboard([
-
-          [
-
-            Markup.button.callback(
-
-              "📸 Send Receipt",
-
-              order
-                ? `send_receipt:${order.id}`
-                : "home"
-
-            )
-
-          ]
-
-        ])
-
-      }
-
-    );
-
-  }
-);
-
-
-
-
-
-// CHATGPT MANUAL DELIVERY
-// After payment confirmed
-
-async function sendManualDelivery(order) {
-
-
-  await bot.telegram.sendMessage(
-
-    order.userId,
-
-
-    `✅ Payment confirmed!\n\n` +
-
-    `🧾 Order: ${order.id}\n\n` +
-
-    `🤖 Your ChatGPT account is being prepared manually.\n\n` +
-
-    `💬 Message admin for delivery:\n` +
-
-    `${ADMIN_TG_LINK}`
-
-  );
-
+    if (extractedNumber && expectedNumber && expectedNumber !== "09") {
+      recipientNumberValid =
+        extractedNumber.slice(-10) === expectedNumber.slice(-10);
+    }
 }
+  const automaticVerificationPassed =
+    Boolean(receiptData) &&
+    isReceipt &&
+    confidenceOkay &&
+    sameAmount &&
+    receiptTimeValid &&
+    Boolean(ref) &&
+    !receiptData.duplicateReference &&
+    recipientNumberValid &&
+    !orderWindowExpired;
 
+  /* * Always save the uploaded receipt/reference, * including receipts that need admin review. * This allows duplicate-reference detection later. */
+  order.receipt = {
+    fileId: media.fileId,
+    fileUniqueId: media.fileUniqueId,
+    mediaType: media.type,
+    reference: ref,
+    paymentMethod: receiptData?.payment_method || "",
+    recipient: receiptData?.recipient || "",
+    recipientNumber: receiptData?.recipient_number || "",
+    amount: receiptData?.amount ?? "",
+    datetime: receiptData?.datetime || "",
+    transactionStatus: receiptData?.status || "",
+    confidence: Number.isFinite(confidence) ? confidence : 0,
+    receivedAt: new Date().toISOString(),
+  };
 
+  /* * PASS = automatic payment approval. */
+  if (automaticVerificationPassed) {
+    order.status = "paid";
+    order.receiptStatus = "verified";
+    order.paymentVerifiedBy = "ai";
+    order.paymentVerifiedAt = new Date().toISOString();
 
+    saveDB(db);
 
-
-// CANVA MANUAL INVITE
-
-async function requestCanvaGmail(order) {
-
-
-  const gmailLink =
-
-    `https://mail.google.com/mail/?view=cm&fs=1` +
-
-    `&su=Canva%20Invite%20${order.id}` +
-
-    `&body=Order%20ID:%20${order.id}%0A%0AMy%20Gmail:%20`;
-
-
-
-    await bot.telegram.sendMessage(
-    order.userId,
-
-    `🎨 Payment confirmed!\n\n` +
-    `🧾 Order: ${order.id}\n\n` +
-    `Please send your Gmail for Canva invite.\n\n` +
-    `After sending, wait for admin invite.`,
-
-    {
-      reply_markup: Markup.inlineKeyboard([
-        [
-          Markup.button.url(
-            "📩 Open Gmail",
-            gmailLink
-          )
-        ]
-      ])
-    }
-  );
-
-}
-// ===============================
-// STOCK DELIVERY + UNIVERSAL ACCOUNT
-// PART 6/6
-// ===============================
-
-
-
-// ADMIN ADD ACCOUNT FLOW
-// Format:
-// email | password
-
-
-bot.command(
-  "addaccount",
-  async (ctx) => {
-
-
-    if (
-      Number(ctx.from.id) !== ADMIN_ID
-    ) {
-
-      return ctx.reply(
-        "❌ Unauthorized"
-      );
-
-    }
-
-
-    adminStockFlow[ctx.from.id] = {
-
-      type:
-        "email_password"
-
-    };
-
+    delete pendingReceiptOrders[ctx.from.id];
 
     await ctx.reply(
-
-      "Send email | password\n\n" +
-
-      "Example:\n" +
-
-      "t35v56f3oy@uberip.com | AITOOLS123"
-
+      "✅ Payment verified automatically! Your order is now processing."
     );
 
+    await confirmPayment(order);
 
-  }
-);
-
-
-
-
-
-bot.on(
-  "text",
-  async (ctx, next) => {
-
-
-    const flow =
-      adminStockFlow[ctx.from.id];
-
-
-    if (!flow) {
-
-      return next();
-
-    }
-
-
-
-    if (
-      flow.type === "email_password"
-    ) {
-
-
-      const lines =
-        ctx.message.text
-          .split("\n")
-          .map(
-            x => x.trim()
-          )
-          .filter(Boolean);
-
-
-
-      const db =
-        loadDB();
-
-
-
-      let added = 0;
-
-
-
-      for (
-        const line of lines
-      ) {
-
-
-        const data =
-          line
-            .split("|")
-            .map(
-              x => x.trim()
-            );
-
-
-
-        if (
-          data.length === 2 &&
-          data[0].includes("@")
-        ) {
-
-
-          db.stock.push({
-
-            productId:
-              "capcut",
-
-            type:
-              "email_password",
-
-            email:
-              data[0],
-
-            password:
-              data[1],
-
-            addedAt:
-              new Date()
-                .toISOString()
-
-          });
-
-
-
-          added++;
-
-        }
-
-      }
-
-
-
-      saveDB(db);
-
-
-
-      delete adminStockFlow[
-        ctx.from.id
-      ];
-
-
-
-      return ctx.reply(
-
-        `✅ Added ${added} account stock.`
-
-      );
-
-    }
-
-
-
-    return next();
-
-  }
-);
-
-
-
-
-
-
-// DELIVERY FUNCTION
-
-
-async function confirmPayment(order) {
-
-
-  const db =
-    loadDB();
-
-
-  const fresh =
-    db.orders.find(
-      o =>
-        o.id === order.id
-    );
-
-
-  if (!fresh) {
-
-    return;
-
+    return true;
   }
 
-
-
-  const product =
-    PRODUCTS[
-      fresh.productId
-    ];
-
-
-
-
-  // CHATGPT MANUAL
-
-  if (
-    product.deliveryType === "manual"
-  ) {
-
-
-    fresh.status =
-      "preparing";
-
-
-    saveDB(db);
-
-
-
-    return sendManualDelivery(
-      fresh
-    );
-
-
-  }
-
-
-
-
-  // CANVA
-
-  if (
-    product.deliveryType ===
-    "manual_invite"
-  ) {
-
-
-    fresh.status =
-      "waiting_gmail";
-
-
-    saveDB(db);
-
-
-
-    return requestCanvaGmail(
-      fresh
-    );
-
-
-  }
-
-
-
-
-
-  // STOCK DELIVERY
-
-
-  const items =
-
-    db.stock.filter(
-
-      s =>
-        s.productId ===
-        fresh.productId
-
-    )
-    .slice(
-      0,
-      fresh.quantity
-    );
-
-
-
-  if (
-    items.length <
-    fresh.quantity
-  ) {
-
-
-    fresh.status =
-      "preparing";
-
-
-    saveDB(db);
-
-
-    return;
-
-  }
-
-
-
-
-  fresh.deliveredItems =
-    items;
-
-
-
-  db.stock =
-    db.stock.filter(
-
-      item =>
-        !items.includes(item)
-
-    );
-
-
-
-  fresh.status =
-    "delivered";
-
-
-
-  fresh.deliveredAt =
-    new Date()
-      .toISOString();
-
-
+  /* * FAIL / UNCERTAIN = manual verification. * Buyer is NOT automatically rejected. */
+  order.receiptStatus = "pending_verification";
 
   saveDB(db);
 
+  delete pendingReceiptOrders[ctx.from.id];
 
+  await ctx.reply("⏳ Receipt received. Waiting for admin verification.");
 
-  let delivery =
+  if (ADMIN_ID) {
+    const reasons = [];
 
-    `✅ PAYMENT CONFIRMED!\n\n` +
+    if (aiError || !receiptData) {
+      reasons.push("⚠️ AI could not read the receipt");
+    } else {
+      if (!isReceipt) {
+        reasons.push("⚠️ AI is not confident this is a payment receipt");
+      }
 
-    `🧾 Order: ${fresh.id}\n\n`;
+      if (!confidenceOkay) {
+        reasons.push(
+          `⚠️ Low AI confidence (${Math.round(confidence * 100) || 0}%)`
+        );
+      }
 
+      if (!sameAmount) {
+        reasons.push("⚠️ Amount needs checking");
+      }
 
+      if (!receiptTimeValid) {
+        reasons.push("⚠️ Receipt time is unreadable or outside 10 minutes");
+      }
 
+      if (orderWindowExpired) {
+        reasons.push("⚠️ Order payment window has passed");
+      }
 
-  for (
-    const item of items
-  ) {
+      if (receiptData.duplicateReference) {
+        reasons.push("⚠️ Reference number was already used");
+      }
 
+      if (!ref) {
+        reasons.push("⚠️ Reference number could not be read");
+      }
 
-    if (
-      item.link
-    ) {
-
-      delivery +=
-
-        `🔗 Link:\n${item.link}\n\n`;
-
+      if (!recipientNumberValid) {
+        reasons.push("⚠️ Recipient number needs checking");
+      }
     }
 
-
-
-    if (
-      item.type ===
-      "email_password"
-    ) {
-
-      delivery +=
-
-        `📧 Email: ${item.email}\n` +
-
-        `🔑 Password: ${item.password}\n\n`;
-
+    if (!reasons.length) {
+      reasons.push("⚠️ Automatic verification was inconclusive");
     }
 
+    const adminCaption =
+      `🧾 FOR MANUAL VERIFICATION\n\n` +
+      `Order: ${id}\n` +
+      `Product: ${order.productName}\n` +
+      `Expected total: ₱${order.totalPrice}\n\n` +
+      `AI payment method: ${receiptData?.payment_method || "Unreadable"}\n` +
+      `AI amount: ${receiptData?.amount || "Unreadable"}\n` +
+      `AI date/time: ${receiptData?.datetime || "Unreadable"} (UTC)\n` +
+      `AI reference: ${ref || "Unreadable"}\n` +
+      `AI confidence: ${Math.round(confidence * 100) || 0}%\n\n` +
+      `Reason:\n${reasons.join("\n")}\n\n` +
+      `Buyer: ${order.firstName || ""} ${order.lastName || ""} ` +
+      `@${order.username || "no_username"} (${order.userId})`;
+
+    /* * Manual fallback has Approve. * There is NO automatic rejection. */
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback("✅ Approve Payment", `approve_${id}`)],
+    ]);
+
+    const sendReceipt =
+      media.type === "document"
+        ? bot.telegram.sendDocument(ADMIN_ID, media.fileId, {
+            caption: adminCaption,
+            ...keyboard,
+          })
+        : bot.telegram.sendPhoto(ADMIN_ID, media.fileId, {
+            caption: adminCaption,
+            ...keyboard,
+          });
+
+    await sendReceipt.catch((error) => {
+      console.error("Failed to send receipt to admin:", error);
+    });
   }
 
+  return true;
+}
+        `❌ Not enough stock.\n\nAvailable: ${available}\nRequested: ${q}`
+      );
+    }
+  }
 
+  const order = {
+    id: orderId(),
 
+    userId: ctx.from.id,
+
+    username: ctx.from.username || "",
+
+    firstName: ctx.from.first_name || "",
+
+    lastName: ctx.from.last_name || "",
+
+    productId: product.id,
+
+    productName: product.name,
+
+    quantity: q,
+
+    pricePerItem: product.price,
+
+    totalPrice: product.price * q,
+
+    status: "waiting_payment",
+
+    createdAt: new Date().toISOString(),
+
+    paymentExpiresAt: Date.now() + 10 * 60 * 1000,
+
+    gmail: null,
+
+    deliveredItems: [],
+  };
+
+  db.orders.push(order);
+
+  if (!db.users) {
+    db.users = [];
+  }
+
+  const exists = db.users.find((u) => u.id === ctx.from.id);
+
+  if (!exists) {
+    db.users.push({
+      id: ctx.from.id,
+
+      username: ctx.from.username || "",
+
+      firstName: ctx.from.first_name || "",
+
+      lastName: ctx.from.last_name || "",
+
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  saveDB(db);
+
+  delete pendingOrders[ctx.from.id];
+
+  await ctx.reply(
+    `🎀 *ORDER CREATED!*\n\n` +
+      `${product.emoji} Product: *${product.name}*\n` +
+      `🔢 Quantity: *${q}*\n` +
+      `💸 Price: *₱${product.price} each*\n` +
+      `💰 Total: *₱${order.totalPrice}*\n\n` +
+      `🧾 Order ID: \`${order.id}\`\n\n` +
+      `⏳ Waiting for Payment`,
+
+    {
+      parse_mode: "Markdown",
+
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("💳 Payment Guide", "payment_guide")],
+
+        [Markup.button.callback("❌ Cancel Order", `cancel:${order.id}`)],
+      ]),
+    }
+  );
+
+  if (ADMIN_ID) {
+    await bot.telegram
+      .sendMessage(
+        ADMIN_ID,
+
+        `🛎 New Order\n\n` +
+          `Order: ${order.id}\n` +
+          `Product: ${product.name}\n` +
+          `Qty: ${q}\n` +
+          `Total: ₱${order.totalPrice}\n` +
+          `Buyer: @${order.username || "no_username"} (${order.userId})`
+      )
+      .catch(() => {});
+  }
+});
+
+// ===============================
+// GMAIL HANDLER (CANVA)
+// ===============================
+
+bot.hears(
+  /^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i,
+
+  async (ctx) => {
+    const [, id, gmail] = ctx.match;
+
+    const db = loadDB();
+
+    const order = db.orders.find(
+      (o) => o.id === id && o.userId === ctx.from.id
+    );
+        const db = loadDB();
+
+    for (const link of links) {
+      db.stock.push({
+        productId: "gemini",
+        type: "link",
+        link,
+        addedAt: new Date().toISOString(),
+      });
+    }
+
+    saveDB(db);
+
+    await notifyAllUsers(
+      `🌸 HYUNA STORE UPDATE 🌸\n\n` +
+        `✨ New stock available!\n\n` +
+        `🛒 ORDER NOW\n` +
+        `https://t.me/AITOOLSHyuna_Bot?start=shop\n\n` +
+        `💗 Thank you for supporting us!`
+    );
+
+    delete adminStockFlow[ctx.from.id];
+
+    return ctx.reply(
+      `✅ Added ${links.length} Gemini links and notified users.`
+    );
+  }
+
+  return next();
+});
+
+// ===============================
+// DELIVERY FUNCTION
+// ===============================
+
+async function confirmPayment(order) {
+  const db = loadDB();
+
+  const fresh = db.orders.find((o) => o.id === order.id);
+
+  if (!fresh) {
+    return;
+  }
+
+  const product = PRODUCTS[fresh.productId];
+
+  if (!product) {
+    return;
+  }
+
+  // Manual products
+
+  if (product.deliveryType === "manual") {
+    fresh.status = "preparing";
+
+    saveDB(db);
+
+    await bot.telegram.sendMessage(
+      fresh.userId,
+
+      `💗 Payment confirmed!\n\n` +
+        `Order: ${fresh.id}\n\n` +
+        `🌸 Your order is being prepared manually.`
+    );
+
+    return;
+  }
+
+  // Canva
+
+  if (product.deliveryType === "manual_invite") {
+    fresh.status = "waiting_gmail";
+
+    saveDB(db);
+
+    await bot.telegram.sendMessage(
+      fresh.userId,
+
+      `🧁 Payment confirmed!\n\n` +
+        `Order: ${fresh.id}\n\n` +
+        `Please send your Gmail:\n\n` +
+        `GMAIL ${fresh.id} your@gmail.com`
+    );
+
+    return;
+  }
+
+  // Stock delivery
+
+  const available = db.stock.filter((s) => s.productId === fresh.productId);
+
+  const items = available.slice(0, fresh.quantity);
+
+  if (items.length < fresh.quantity) {
+    fresh.status = "preparing";
+
+    saveDB(db);
+
+    await bot.telegram.sendMessage(
+      fresh.userId,
+
+      `✅ Payment confirmed.\n\n` + `⏳ Preparing delivery.`
+    );
+
+    return;
+  }
+
+  fresh.deliveredItems = items;
+
+  db.stock = db.stock.filter((s) => !items.includes(s));
+
+  fresh.status = "delivered";
+
+  fresh.deliveredAt = new Date().toISOString();
+
+  saveDB(db);
+
+  let delivery = `🎉 PAYMENT CONFIRMED!\n\n` + `🧾 Order: ${fresh.id}\n\n`;
+
+  for (const item of items) {
+    if (item.type === "link") {
+      delivery += `🔗 Link:\n${item.link}\n\n`;
+    }
+
+    if (item.type === "email_password") {
+      delivery +=
+        `📧 Email: ${item.email}\n` + `🔑 Password: ${item.password}\n\n`;
+    }
+  }
 
   await bot.telegram.sendMessage(
-
     fresh.userId,
 
     delivery
-
   );
-
-
 }
 
+// ===============================
+// START BOT
+// ===============================
 
-
-
-
-bot.catch(
-  (err) => {
-
-    console.error(
-      "BOT ERROR:",
-      err
-    );
-
-  }
-);
-
-
+bot.catch((err) => {
+  console.error("BOT ERROR:", err);
+});
 
 bot.launch();
 
+console.log("🌸 Hyuna Store Bot Started");
 
+process.once("SIGINT", () => bot.stop("SIGINT"));
 
-console.log(
-  "🌸 Hyuna Bot Started"
-);
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
