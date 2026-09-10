@@ -403,8 +403,6 @@ bot.action("payment_guide", async (ctx) => {
       recipientNumberValid =
         extractedNumber.slice(-10) === expectedNumber.slice(-10);
     }
-  }
-
   const automaticVerificationPassed =
     Boolean(receiptData) &&
     isReceipt &&
