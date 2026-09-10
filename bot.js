@@ -121,7 +121,7 @@ const PRODUCTS = {
   chatgpt: {
     id: "chatgpt",
     emoji: "💕",
-    name: "ChatGPT Shared",
+    name: "ChatGPT Plus",
     price: 450,
     details: ["Shared by 4 persons", "1 device only", "Stable account"],
     note: "🛡 Full warranty • Manual account delivery up to 12 hours",
