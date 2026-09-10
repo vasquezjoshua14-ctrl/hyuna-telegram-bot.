@@ -895,15 +895,11 @@ async function processReceiptMedia(ctx, media) {
     confidenceOkay = Number.isFinite(confidence) && confidence >= 0.5;
 
     /* * Recipient number is checked only when the * receipt actually exposes a readable number. * Missing/masked number alone does not reject it. */
-    const extractedNumber = normalizePhone(receiptData.recipient_number);
-
-    const expectedNumber = normalizePhone(GCASH_NUMBER);
-
-    if (extractedNumber && expectedNumber && expectedNumber !== "09") {
-      recipientNumberValid =
-        extractedNumber.slice(-10) === expectedNumber.slice(-10);
-    }
-}
+    recipientNumberValid = recipientNumberMatches(
+  receiptData.recipient_number,
+  GCASH_NUMBER
+);
+  }
   const automaticVerificationPassed =
     Boolean(receiptData) &&
     isReceipt &&
