@@ -358,7 +358,150 @@ bot.action("payment_guide", async (ctx) => {
       `Total: *₱${order.totalPrice}*\n\n` +
       caption;
   }
-  
+  await ctx.replyWithPhoto(
+    { source: "./GCash-MyQR-08092026123724.PNG.jpg" },
+    {
+      caption,
+      parse_mode: "Markdown",
+      ...(order
+        ? Markup.inlineKeyboard([
+            [
+              Markup.button.callback(
+                "📸 Send Receipt",
+                `send_receipt:${order.id}`
+              ),
+            ],
+          ])
+        : {}),
+    }
+  );
+});
+
+bot.action(/^send_receipt:(HYU-.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+
+  const id = ctx.match[1];
+  const db = loadDB();
+
+  const order = db.orders.find((o) => o.id === id && o.userId === ctx.from.id);
+
+  if (!order) {
+    return ctx.reply("Order not found.");
+  }
+
+  if (order.status !== "waiting_payment") {
+    return ctx.reply("This order is no longer waiting for payment.");
+  }
+
+  pendingReceiptOrders[ctx.from.id] = id;
+
+  await ctx.reply(
+    `📸 Please send your payment receipt screenshot here.\n\n` +
+      `🧾 Order ID: \`${id}\`\n\n` +
+      `🤖 Your receipt will be checked automatically.\n` +
+      `If it cannot be verified confidently, it will be sent to admin for manual verification.`,
+    {
+      parse_mode: "Markdown",
+    }
+  );
+});
+
+async function processReceiptMedia(ctx, media) {
+  const id = pendingReceiptOrders[ctx.from.id];
+
+  if (!id) return false;
+
+  if (media.type === "document" && !media.mimeType?.startsWith("image/")) {
+    await ctx.reply("❌ Please send the receipt as a photo or image file.");
+    return true;
+  }
+
+  const db = loadDB();
+
+  const order = db.orders.find((o) => o.id === id && o.userId === ctx.from.id);
+
+  if (!order) {
+    delete pendingReceiptOrders[ctx.from.id];
+
+    await ctx.reply("❌ Order not found.");
+    return true;
+  }
+
+  if (order.status !== "waiting_payment") {
+    delete pendingReceiptOrders[ctx.from.id];
+
+    await ctx.reply("❌ This order is no longer waiting for payment.");
+
+    return true;
+  }
+
+  /* * IMPORTANT: * We do NOT hard-reject an uploaded receipt just because * the order's 10-minute payment window has passed. * * A receipt outside the allowed time goes to the admin * for manual verification instead. */
+  const orderWindowExpired =
+    Boolean(order.paymentExpiresAt) &&
+    Date.now() > Number(order.paymentExpiresAt);
+
+  let receiptData = null;
+  let aiError = null;
+
+  try {
+    const fileLink = await bot.telegram.getFileLink(media.fileId);
+
+    const receiptCheck = await checkPaymentReceipt(fileLink.href);
+
+    const cleaned = String(receiptCheck || "")
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+
+    receiptData = JSON.parse(cleaned);
+  } catch (error) {
+    console.error("Receipt AI verification error:", error);
+
+    aiError = error;
+    receiptData = null;
+  }
+
+  let ref = "";
+  let sameAmount = false;
+  let usedReference = null;
+  let receiptTimeValid = false;
+  let recipientNumberValid = true;
+  let isReceipt = false;
+  let confidence = 0;
+  let confidenceOkay = false;
+
+  if (receiptData) {
+    /* * The AI response uses reference_number. * "reference" is kept only as backward compatibility. */
+    ref = normalizeReference(
+      receiptData.reference_number || receiptData.reference
+    );
+
+    usedReference = ref
+      ? db.orders.find(
+          (o) =>
+            o.id !== order.id &&
+            normalizeReference(o.receipt?.reference) === ref
+        )
+      : null;
+
+    receiptData.duplicateReference = Boolean(usedReference);
+
+    const extractedAmount = parseReceiptAmount(receiptData.amount);
+
+    sameAmount =
+      Number.isFinite(extractedAmount) &&
+      extractedAmount === Number(order.totalPrice);
+
+    if (receiptData.datetime) {
+      const receiptTimestamp = new Date(receiptData.datetime).getTime();
+
+      if (Number.isFinite(receiptTimestamp)) {
+        const ageMs = Date.now() - receiptTimestamp;
+
+        receiptTimeValid = ageMs >= 0 && ageMs <= 10 * 60 * 1000;
+      }
+    }
     isReceipt = receiptData.is_receipt === true;
 
     confidence = Number(receiptData.confidence);
