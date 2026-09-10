@@ -922,7 +922,6 @@ bot.on("text", async (ctx, next) => {
 
 bot.hears(
   /^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i,
-
   async (ctx) => {
     const [, id, gmail] = ctx.match;
 
@@ -932,34 +931,43 @@ bot.hears(
       (o) => o.id === id && o.userId === ctx.from.id
     );
 
-    for (const link of links) {
-      db.stock.push({
-        productId: "gemini",
-        type: "link",
-        link,
-        addedAt: new Date().toISOString(),
-      });
+    if (!order) {
+      return ctx.reply("❌ Order not found.");
     }
+
+    if (order.productId !== "canva") {
+      return ctx.reply("❌ Gmail submission is only for Canva orders.");
+    }
+
+    if (order.status !== "waiting_gmail") {
+      return ctx.reply("❌ This order is not waiting for a Gmail address.");
+    }
+
+    order.gmail = gmail.trim().toLowerCase();
+    order.status = "preparing";
 
     saveDB(db);
 
-    await notifyAllUsers(
-      `🌸 HYUNA STORE UPDATE 🌸\n\n` +
-        `✨ New stock available!\n\n` +
-        `🛒 ORDER NOW\n` +
-        `https://t.me/AITOOLSHyuna_Bot?start=shop\n\n` +
-        `💗 Thank you for supporting us!`
+    await ctx.reply(
+      `✅ Gmail received!\n\n` +
+      `🧾 Order: ${order.id}\n` +
+      `📧 Gmail: ${order.gmail}\n\n` +
+      `🌸 Your Canva invite is now being prepared.`
     );
 
-    delete adminStockFlow[ctx.from.id];
-
-    return ctx.reply(
-  `✅ Added ${links.length} Gemini links and notified users.`
-);
+    if (ADMIN_ID) {
+      await bot.telegram
+        .sendMessage(
+          ADMIN_ID,
+          `🧁 CANVA ORDER — GMAIL RECEIVED\n\n` +
+          `Order: ${order.id}\n` +
+          `Gmail: ${order.gmail}\n` +
+          `Buyer: @${order.username || "no_username"} (${order.userId})`
+        )
+        .catch(() => {});
+    }
   }
-
-  return next();
-});
+);
 
 // ===============================
 // DELIVERY FUNCTION
