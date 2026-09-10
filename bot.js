@@ -489,7 +489,10 @@ bot.action("my_orders", async (ctx) => {
     delivered: "✅ Delivered",
     cancelled: "❌ Cancelled",
   };
-    async (ctx) => {
+   bot.hears(
+  /^GMAIL\s+(HYU-[A-Z0-9]+)\s+([^\s@]+@[^\s@]+\.[^\s@]+)$/i,
+
+  async (ctx) => {
     const [, id, gmail] = ctx.match;
 
     const db = loadDB();
@@ -536,10 +539,7 @@ bot.action("my_orders", async (ctx) => {
         )
         .catch(() => {});
     }
-  }
-);
-  return next();
-});
+  );
 
 // ===============================
 // DELIVERY FUNCTION
