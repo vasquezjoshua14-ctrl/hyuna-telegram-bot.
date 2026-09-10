@@ -954,8 +954,8 @@ bot.hears(
     delete adminStockFlow[ctx.from.id];
 
     return ctx.reply(
-      `✅ Added ${links.length} Gemini links and notified users.`
-    );
+  `✅ Added ${links.length} Gemini links and notified users.`
+);
   }
 
   return next();
