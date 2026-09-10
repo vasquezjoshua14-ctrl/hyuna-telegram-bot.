@@ -1430,38 +1430,42 @@ async function confirmPayment(order) {
   // Manual products
 
   if (product.deliveryType === "manual") {
-    fresh.status = "preparing";
+  fresh.status = "preparing";
 
-    saveDB(db);
+  saveDB(db);
 
-    await bot.telegram.sendMessage(
-      fresh.userId,
+  await bot.telegram.sendMessage(
+    fresh.userId,
 
-      `💗 Payment confirmed!\n\n` +
-        `Order: ${fresh.id}\n\n` +
-        `🌸 Your order is being prepared manually.`
-    );
+    `💗✨ Payment confirmed! ✨💗\n\n` +
+      `🧾 Order: ${fresh.id}\n\n` +
+      `🌸 Your order is being prepared manually.\n\n` +
+      `🧾 Please keep your receipt.\n` +
+      `👉 Direct message admin:\n` +
+      `https://t.me/${ADMIN_USERNAME}`
+  );
 
-    return;
+  return;
   }
-
   // Canva
 
   if (product.deliveryType === "manual_invite") {
-    fresh.status = "waiting_gmail";
+  fresh.status = "waiting_gmail";
 
-    saveDB(db);
+  saveDB(db);
 
-    await bot.telegram.sendMessage(
-      fresh.userId,
+  await bot.telegram.sendMessage(
+    fresh.userId,
 
-      `🧁 Payment confirmed!\n\n` +
-        `Order: ${fresh.id}\n\n` +
-        `Please send your Gmail:\n\n` +
-        `GMAIL ${fresh.id} your@gmail.com`
-    );
+    `🧁✨ Payment confirmed! ✨🧁\n\n` +
+      `🧾 Order: ${fresh.id}\n\n` +
+      `📧 Please send your Gmail to admin.\n\n` +
+      `👉 https://t.me/${ADMIN_USERNAME}\n\n` +
+      `📝 Include your Order ID when messaging admin:\n` +
+      `${fresh.id}`
+  );
 
-    return;
+  return;
   }
 
   // Stock delivery
