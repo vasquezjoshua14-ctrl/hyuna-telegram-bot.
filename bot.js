@@ -240,7 +240,69 @@ function normalizeReference(value) {
 function normalizePhone(value) {
   return String(value || "").replace(/\D/g, "");
 }
+function recipientNumberMatches(value, expectedValue) {
+  const raw = String(value || "").trim();
+  const expected = normalizePhone(expectedValue);
 
+  if (!raw || !expected) {
+    return true;
+  }
+
+  const extractedDigits = normalizePhone(raw);
+
+  // Full number
+  if (extractedDigits.length >= 10) {
+    return extractedDigits.slice(-10) === expected.slice(-10);
+  }
+
+  // Masked number
+  const hasMask = /[.*•xX]/.test(raw);
+
+  if (hasMask) {
+    const expectedLast4 = expected.slice(-4);
+    const extractedLast4 = extractedDigits.slice(-4);
+
+    return (
+      extractedLast4.length === 4 &&
+      extractedLast4 === expectedLast4
+    );
+  }
+
+  return false;
+}
+
+function parseReceiptDateTime(value, paymentMethod) {
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    return NaN;
+  }
+
+  const method = String(paymentMethod || "").toLowerCase();
+
+  const isPhilippinePayment =
+    method.includes("gcash") ||
+    method.includes("maribank");
+
+  if (
+    isPhilippinePayment &&
+    /(?:Z|\+00:00)$/i.test(raw)
+  ) {
+    const match = raw.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/
+    );
+
+    if (match) {
+      const [, year, month, day, hour, minute, second = "00"] = match;
+
+      return Date.parse(
+        `${year}-${month}-${day}T${hour}:${minute}:${second}+08:00`
+      );
+    }
+  }
+
+  return Date.parse(raw);
+}
 function parseReceiptAmount(value) {
   const cleaned = String(value ?? "")
     .replace(/,/g, "")
