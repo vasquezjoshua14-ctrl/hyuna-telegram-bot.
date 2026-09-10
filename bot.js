@@ -661,6 +661,118 @@ async function processReceiptMedia(ctx, media) {
 
   return true;
 }
+bot.action(/^approve_(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery("Unauthorized");
+  }
+
+  const id = ctx.match[1];
+  const db = loadDB();
+
+  const order = db.orders.find((o) => o.id === id);
+
+  if (!order) {
+    return ctx.answerCbQuery("Order not found");
+  }
+
+  /* * Prevent a second click from delivering * stock twice. */
+  if (
+    ["paid", "preparing", "waiting_gmail", "delivered"].includes(order.status)
+  ) {
+    return ctx.answerCbQuery("Order already processed");
+  }
+
+  order.status = "paid";
+  order.receiptStatus = "verified";
+  order.paymentVerifiedBy = "admin";
+  order.paymentVerifiedAt = new Date().toISOString();
+
+  saveDB(db);
+
+  await ctx.answerCbQuery("Payment approved");
+
+  await ctx
+    .editMessageReplyMarkup({
+      inline_keyboard: [],
+    })
+    .catch(() => {});
+
+  await ctx.reply(`✅ Order ${id} approved. Processing delivery...`);
+
+  await confirmPayment(order);
+});
+
+bot.on("photo", async (ctx, next) => {
+  const photo = ctx.message.photo[ctx.message.photo.length - 1];
+
+  const handled = await processReceiptMedia(ctx, {
+    type: "photo",
+    fileId: photo.file_id,
+    fileUniqueId: photo.file_unique_id,
+  });
+
+  if (!handled) return next();
+});
+
+bot.on("document", async (ctx, next) => {
+  const document = ctx.message.document;
+
+  const handled = await processReceiptMedia(ctx, {
+    type: "document",
+    fileId: document.file_id,
+    fileUniqueId: document.file_unique_id,
+    mimeType: document.mime_type || "",
+  });
+
+  if (!handled) return next();
+});
+// ===============================
+// MY ORDERS
+// ===============================
+
+bot.action("my_orders", async (ctx) => {
+  await ctx.answerCbQuery();
+
+  const db = loadDB();
+
+  const orders = db.orders
+    .filter((o) => o.userId === ctx.from.id)
+    .slice(-10)
+    .reverse();
+
+  if (!orders.length) {
+    return ctx.reply("📦 You have no orders yet.");
+  }
+
+  const statusMap = {
+    waiting_payment: "⏳ Waiting for Payment",
+    paid: "💗 Payment Confirmed",
+    preparing: "🌸 Preparing Delivery",
+    waiting_gmail: "📧 Waiting Gmail",
+    delivered: "✅ Delivered",
+    cancelled: "❌ Cancelled",
+  };
+
+  const lines = orders.map((o) => {
+    const qty = o.quantity || 1;
+    const price = o.pricePerItem || 0;
+    const total = o.totalPrice || price * qty;
+
+    const receipt =
+      o.receiptStatus === "pending_verification"
+        ? "\n📸 Receipt Pending Admin Review"
+        : "";
+
+    return (
+      `🧾 \`${o.id}\`\n` +
+      `${o.productName}\n` +
+      `${qty} x ₱${price} = ₱${total}\n` +
+      `${statusMap[o.status] || o.status}` +
+      receipt
+    );
+  });
+
+  await ctx.reply(`📦 *MY
 ORDERS*\n\n${lines.join("\n\n")}`, {
     parse_mode: "Markdown",
   });
