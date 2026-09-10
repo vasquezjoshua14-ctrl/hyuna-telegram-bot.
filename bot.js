@@ -445,7 +445,7 @@ bot.action("payment_guide", async (ctx) => {
   });
 
   if (!handled) return next();
-});
+};
 
 bot.on("document", async (ctx, next) => {
   const document = ctx.message.document;
