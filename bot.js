@@ -661,6 +661,50 @@ async function processReceiptMedia(ctx, media) {
 
   return true;
 }
+ORDERS*\n\n${lines.join("\n\n")}`, {
+    parse_mode: "Markdown",
+  });
+});
+
+// ===============================
+// QUANTITY ORDER HANDLER
+// ===============================
+
+bot.on("text", async (ctx, next) => {
+  // Ignore commands like /admin /addstock /menu
+  if (ctx.message.text?.startsWith("/")) {
+    return next();
+  }
+
+  const pending = pendingOrders[ctx.from.id];
+  if (!pending) return next();
+
+  const text = (ctx.message.text || "").trim();
+
+  const q = Number(text);
+
+  if (!Number.isInteger(q) || q < 1 || q > 50) {
+    return ctx.reply("❌ Invalid quantity. Enter 1-50.");
+  }
+
+  const product = PRODUCTS[pending.productId];
+
+  if (!product) {
+    delete pendingOrders[ctx.from.id];
+    return ctx.reply("Product not found.");
+  }
+
+  const db = loadDB();
+
+  // Check stock for instant delivery items
+  if (
+    product.deliveryType === "link" ||
+    product.deliveryType === "email_password"
+  ) {
+    const available = db.stock.filter((s) => s.productId === product.id).length;
+
+    if (q > available) {
+    return ctx.reply(
         `❌ Not enough stock.\n\nAvailable: ${available}\nRequested: ${q}`
       );
     }
