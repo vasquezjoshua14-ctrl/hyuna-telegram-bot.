@@ -362,7 +362,7 @@ bot.action("payment_guide", async (ctx) => {
 
   await ctx.replyWithPhoto(
     { source: "./GCash-MyQR-08092026123724.PNG.jpg" },
-    {
+    {,
       caption,
       parse_mode: "Markdown",
       ...(order
