@@ -102,7 +102,7 @@ const PRODUCTS = {
     id: "gemini",
     emoji: "🌷",
     name: "Gemini Pro / Flow",
-    price: 100,
+    price: 90,
     details: ["1K Credits", "18 Months"],
     note: "⚠️ No warranty after claim",
     deliveryType: "link",
