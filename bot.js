@@ -962,7 +962,7 @@ async function processReceiptMedia(ctx, media) {
   GCASH_NUMBER
 );
   }
-  const automaticVerificationPassed =false;
+  const automaticVerificationPassed
     Boolean(receiptData) &&
     isReceipt &&
     confidenceOkay &&
