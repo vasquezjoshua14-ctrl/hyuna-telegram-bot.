@@ -102,7 +102,7 @@ const PRODUCTS = {
     id: "gemini",
     emoji: "🌷",
     name: "Gemini Pro / Flow",
-    price: 90,
+    price: 100,
     details: ["1K Credits", "18 Months"],
     note: "⚠️ No warranty after claim",
     deliveryType: "link",
@@ -373,8 +373,8 @@ bot.command("admin", async (ctx) => {
   await ctx.reply(
     `👑 ADMIN PANEL\n\n` +
     `📦 CURRENT STOCK\n\n` +
-    `🌷 Gemini: ${geminiStock}\n` +
-    `🎀 CapCut: ${capcutStock}\n\n` +
+    `🌷 Gemini pro: ${geminiStock}\n` +
+    `🎀 CapCut pro: ${capcutStock}\n\n` +
     `Choose an action:`,
     {
       ...Markup.inlineKeyboard([
